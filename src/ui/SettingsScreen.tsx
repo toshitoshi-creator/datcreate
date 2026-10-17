@@ -1,9 +1,9 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { WEATHER_LABEL } from '../core/environment';
-import type { CreatureStyle } from '../core/genome';
 import type { FetchStatus } from '../core/types';
 import type { ControllerState } from '../engine/gameController';
 import { useSettings } from './hooks';
+import { STYLE_LABEL } from './styleLabels';
 import type { AppServices } from './services';
 
 const STATUS_LABEL: Record<FetchStatus, string> = {
@@ -13,13 +13,6 @@ const STATUS_LABEL: Record<FetchStatus, string> = {
   disabled: '位置情報オフのため天気は使用していません',
   denied: '位置情報が許可されませんでした',
   unavailable: 'この端末では位置情報を利用できません',
-};
-
-const STYLE_LABEL: Record<CreatureStyle, string> = {
-  cute: 'かわいい',
-  cool: 'かっこかわいい',
-  ghost: 'おばけ（かわいい）',
-  ghostCool: 'おばけ（かっこかわいい）',
 };
 
 const fmt = new Intl.DateTimeFormat('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -36,6 +29,7 @@ export function SettingsScreen({ services, state, onClose }: Props) {
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [confirmRetire, setConfirmRetire] = useState(false);
   const [pendingImport, setPendingImport] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -82,6 +76,13 @@ export function SettingsScreen({ services, state, onClose }: Props) {
           <Row label="タイプ" hint="タイプは生まれたときに決まり、途中で変わりません。">
             <span data-testid="creature-style">{STYLE_LABEL[state.game?.style ?? 'cute']}</span>
           </Row>
+          {state.completion !== 'growing' && (
+            <Row label="図鑑にしまう" hint="この子を今の姿のまま図鑑に保存して、新しい子を育てます。">
+              <button className="btn small" data-testid="retire-from-settings" disabled={busy} onClick={() => setConfirmRetire(true)}>
+                新しい子を育てる
+              </button>
+            </Row>
+          )}
         </Section>
 
         <Section title="環境">
@@ -165,6 +166,22 @@ export function SettingsScreen({ services, state, onClose }: Props) {
             await controller.resetGame();
             onClose();
           })}
+        />
+      )}
+      {confirmRetire && (
+        <Confirm
+          title="図鑑にしまって、新しい子を育てますか？"
+          body="この子は今の姿のまま図鑑に保存され、成長はそこで止まります。"
+          confirmLabel="新しい子を育てる"
+          testId="confirm-retire"
+          onCancel={() => setConfirmRetire(false)}
+          onConfirm={() => {
+            setConfirmRetire(false);
+            void run(async () => {
+              await controller.retireToCollection();
+              onClose();
+            });
+          }}
         />
       )}
       {pendingImport !== null && (

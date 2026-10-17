@@ -66,6 +66,7 @@ export class CreatureRenderer {
   private raf = 0;
   private cam: Camera = { zoom: 24, cx: 0.5, cy: 0.5 };
   private auto = true;
+  private bottomInset = 0;
   animationEnabled = true;
   outlineEnabled = true;
   readonly stats: RendererStats = { lastFrameMs: 0, avgFrameMs: 0, frames: 0, pixels: 0 };
@@ -194,8 +195,17 @@ export class CreatureRenderer {
     const b = this.bounds;
     if (!b) return { zoom: 24, cx: 0.5, cy: 0.5 };
     const w = b.maxX - b.minX + 1, h = b.maxY - b.minY + 1;
-    const zoom = clamp(Math.min((this.cssW * 0.7) / w, (this.cssH * 0.52) / h, 40), MIN_ZOOM, MAX_ZOOM);
-    return { zoom, cx: (b.minX + b.maxX + 1) / 2, cy: (b.minY + b.maxY + 1) / 2 };
+    const availH = Math.max(80, this.cssH - this.bottomInset);
+    const zoom = clamp(Math.min((this.cssW * 0.7) / w, (availH * (this.bottomInset ? 0.62 : 0.52)) / h, 40), MIN_ZOOM, MAX_ZOOM);
+    // keep the body centred in the area above any bottom overlay
+    const cy = (b.minY + b.maxY + 1) / 2 + this.bottomInset / 2 / zoom;
+    return { zoom, cx: (b.minX + b.maxX + 1) / 2, cy };
+  }
+
+  /** Space covered by an overlay at the bottom (CSS px); the auto view fits above it. */
+  setBottomInset(px: number) {
+    this.bottomInset = Math.max(0, px);
+    if (this.auto) this.requestRender();
   }
 
   setCamera(cam: Camera | null) {
@@ -420,7 +430,7 @@ function easeOutBack(t: number) {
 }
 
 /** Draw a small static snapshot of the first `count` dots (history view). */
-export function drawThumbnail(canvas: HTMLCanvasElement, pixels: readonly Pixel[], count: number) {
+export function drawThumbnail(canvas: HTMLCanvasElement, pixels: readonly Pixel[], count: number, opts: { outline?: boolean; maxScale?: number } = {}) {
   const n = Math.min(count, pixels.length);
   const ctx = canvas.getContext('2d');
   if (!ctx || !n) return;
@@ -443,7 +453,19 @@ export function drawThumbnail(canvas: HTMLCanvasElement, pixels: readonly Pixel[
   }
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  const scale = Math.min((canvas.width * 0.86) / w, (canvas.height * 0.86) / h, 12);
+  const scale = Math.min((canvas.width * 0.86) / (w + 2), (canvas.height * 0.86) / (h + 2), opts.maxScale ?? 12);
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(tmp, (canvas.width - w * scale) / 2, (canvas.height - h * scale) / 2, w * scale, h * scale);
+  const dx = (canvas.width - w * scale) / 2, dy = (canvas.height - h * scale) / 2;
+  if (opts.outline) {
+    const sil = document.createElement('canvas');
+    sil.width = w;
+    sil.height = h;
+    const sctx = sil.getContext('2d')!;
+    sctx.drawImage(tmp, 0, 0);
+    sctx.globalCompositeOperation = 'source-in';
+    sctx.fillStyle = OUTLINE;
+    sctx.fillRect(0, 0, w, h);
+    for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) if (ox || oy) ctx.drawImage(sil, dx + ox * scale, dy + oy * scale, w * scale, h * scale);
+  }
+  ctx.drawImage(tmp, dx, dy, w * scale, h * scale);
 }

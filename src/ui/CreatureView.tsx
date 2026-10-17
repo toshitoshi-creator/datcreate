@@ -15,10 +15,12 @@ interface Props {
   controller: GameController;
   settingsStore: SettingsStore;
   settings: Settings;
+  /** Height of an overlay covering the bottom of the view (the auto view fits above it). */
+  bottomInset?: number;
 }
 
 /** Canvas host: wires controller events, settings and touch/mouse gestures to the renderer. */
-export const CreatureView = forwardRef<CreatureViewHandle, Props>(function CreatureView({ controller, settingsStore, settings }, ref) {
+export const CreatureView = forwardRef<CreatureViewHandle, Props>(function CreatureView({ controller, settingsStore, settings, bottomInset = 0 }, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<CreatureRenderer | null>(null);
   const settingsRef = useRef(settings);
@@ -158,6 +160,10 @@ export const CreatureView = forwardRef<CreatureViewHandle, Props>(function Creat
   useEffect(() => {
     rendererRef.current?.setOutlineEnabled(settings.outlineEnabled);
   }, [settings.outlineEnabled]);
+
+  useEffect(() => {
+    rendererRef.current?.setBottomInset(bottomInset);
+  }, [bottomInset]);
 
   useEffect(() => {
     // "表示倍率のリセット" from settings clears the stored camera.

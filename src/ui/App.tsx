@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { CollectionScreen } from './CollectionScreen';
 import { HistoryScreen } from './HistoryScreen';
 import { MainScreen } from './MainScreen';
 import { SettingsScreen } from './SettingsScreen';
@@ -26,7 +27,7 @@ export function App() {
   return <Game services={services} />;
 }
 
-type Screen = 'main' | 'history' | 'settings';
+type Screen = 'main' | 'history' | 'settings' | 'collection';
 
 function Game({ services }: { services: AppServices }) {
   const state = useControllerState(services.controller);
@@ -34,12 +35,25 @@ function Game({ services }: { services: AppServices }) {
 
   if (state.status === 'loading') return <Splash />;
   if (state.status === 'error') return <ErrorView message={state.error ?? '不明なエラー'} />;
-  if (state.status === 'no-game') return <StartScreen onStart={(style) => services.controller.startNewGame(style)} />;
+  if (state.status === 'no-game') {
+    if (screen === 'collection') return <CollectionScreen controller={services.controller} onClose={() => setScreen('main')} />;
+    return (
+      <StartScreen
+        controller={services.controller}
+        onStart={async (style) => {
+          await services.controller.startNewGame(style);
+          setScreen('main');
+        }}
+        onOpenCollection={() => setScreen('collection')}
+      />
+    );
+  }
   return (
     <>
       <MainScreen services={services} state={state} onOpen={setScreen} hidden={screen !== 'main'} />
       {screen === 'history' && <HistoryScreen services={services} state={state} onClose={() => setScreen('main')} />}
       {screen === 'settings' && <SettingsScreen services={services} state={state} onClose={() => setScreen('main')} />}
+      {screen === 'collection' && <CollectionScreen controller={services.controller} onClose={() => setScreen('main')} />}
     </>
   );
 }

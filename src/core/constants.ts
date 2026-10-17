@@ -13,3 +13,6 @@ export const WEATHER_VALID_MS = 3 * HOUR_MS;
 
 /** Clock moving backwards by more than this is reported as an anomaly. */
 export const CLOCK_ROLLBACK_TOLERANCE_MS = 5 * 60_000;
+
+/** Growth slot at which a creature is complete (30 days -> 721 dots). */
+export const COMPLETE_GROWTH_INDEX = 720;

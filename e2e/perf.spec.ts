@@ -12,7 +12,7 @@ test('10,000-dot save: import, render, zoom/pan frame times', async ({ page }, i
   test.setTimeout(180_000);
   const N = 10_000;
   const startedAt = Date.now() - (N - 1) * HOUR_MS - 10 * 60_000;
-  const game = { gameId: 'perf', startedAt, lastProcessedGrowthIndex: N - 1, schemaVersion: 1, generatorVersion: 1, initialSeed: 123456789, createdAt: startedAt, updatedAt: startedAt, lastObservedAt: startedAt };
+  const game = { gameId: 'perf', startedAt, lastProcessedGrowthIndex: N - 1, schemaVersion: 1, generatorVersion: 1, initialSeed: 123456789, createdAt: startedAt, updatedAt: startedAt, lastObservedAt: startedAt, keepGrowing: true };
   const sim = new Simulation(game);
   const pixels = [];
   for (let i = 0; i < N; i++) {

@@ -117,6 +117,7 @@ export function validateSave(input: unknown): ValidationResult {
     updatedAt: g.updatedAt as number,
     lastObservedAt: isNum(g.lastObservedAt) ? (g.lastObservedAt as number) : (g.updatedAt as number),
     ...(g.style !== undefined ? { style: g.style as CreatureStyle } : {}),
+    ...(g.keepGrowing === true ? { keepGrowing: true } : {}),
   };
   return {
     ok: true,

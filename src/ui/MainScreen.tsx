@@ -3,6 +3,7 @@ import { TIME_OF_DAY_LABEL, WEATHER_LABEL } from '../core/environment';
 import { elapsedParts, formatCountdown, nextGrowthAt, timeOfDayFromHour } from '../core/time';
 import type { ControllerState } from '../engine/gameController';
 import { CreatureView, type CreatureViewHandle } from './CreatureView';
+import { CompletionDialog } from './CompletionDialog';
 import { DevPanel } from './DevPanel';
 import { useNow, useSettings } from './hooks';
 import type { AppServices } from './services';
@@ -10,7 +11,7 @@ import type { AppServices } from './services';
 interface Props {
   services: AppServices;
   state: ControllerState;
-  onOpen: (screen: 'history' | 'settings') => void;
+  onOpen: (screen: 'history' | 'settings' | 'collection') => void;
   hidden: boolean;
 }
 
@@ -51,7 +52,7 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
 
   return (
     <div className="main-screen" aria-hidden={hidden}>
-      <CreatureView ref={view} controller={controller} settingsStore={settingsStore} settings={settings} />
+      <CreatureView ref={view} controller={controller} settingsStore={settingsStore} settings={settings} bottomInset={state.completion === 'complete' ? 300 : 0} />
 
       <header className="hud-top">
         <div>
@@ -59,8 +60,13 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
           <div className="age" data-testid="elapsed">
             {el.days}日 {el.hours}時間 経過
           </div>
+          {state.completion !== 'growing' && <div className="done-pill" data-testid="complete-badge">完成</div>}
         </div>
         <nav className="hud-actions">
+          <button className="icon-btn" data-testid="open-collection" onClick={() => onOpen('collection')} aria-label="図鑑">
+            <span aria-hidden>▦</span>
+            <small>図鑑</small>
+          </button>
           <button className="icon-btn" data-testid="open-history" onClick={() => onOpen('history')} aria-label="成長履歴">
             <span aria-hidden>☰</span>
             <small>履歴</small>
@@ -98,7 +104,7 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
         <dl className="stats">
           <div>
             <dt>次の成長まで</dt>
-            <dd data-testid="countdown">{formatCountdown(remaining)}</dd>
+            <dd data-testid="countdown">{state.completion === 'complete' ? '完成' : formatCountdown(remaining)}</dd>
           </div>
           <div>
             <dt>時間帯</dt>
@@ -110,6 +116,14 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
           </div>
         </dl>
       </footer>
+
+      {state.completion === 'complete' && !hidden && (
+        <CompletionDialog
+          count={state.pixelCount}
+          onNew={() => controller.retireToCollection()}
+          onContinue={() => controller.continueGrowing()}
+        />
+      )}
 
       {devClock && <DevPanel devClock={devClock} onAdvanced={() => void controller.checkGrowth()} />}
     </div>

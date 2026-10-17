@@ -1,4 +1,4 @@
-import { CLOCK_ROLLBACK_TOLERANCE_MS, CURRENT_GENERATOR_VERSION, SCHEMA_VERSION, WEATHER_VALID_MS } from '../core/constants';
+import { CLOCK_ROLLBACK_TOLERANCE_MS, COMPLETE_GROWTH_INDEX, CURRENT_GENERATOR_VERSION, SCHEMA_VERSION, WEATHER_VALID_MS } from '../core/constants';
 import { Simulation } from '../core/generator';
 import { detectMilestones, sortMilestones } from '../core/milestones';
 import { CREATURE_STYLES, type CreatureStyle } from '../core/genome';
@@ -25,6 +25,23 @@ export interface ControllerState {
   catchUp: { done: number; total: number } | null;
   clockWarning: boolean;
   locationStatus: FetchStatus | null;
+  /**
+   * 'complete': reached 30 days and waits for the player's choice (growth is
+   * paused); 'continuing': the player chose to keep growing.
+   */
+  completion: Completion;
+}
+
+export type Completion = 'growing' | 'complete' | 'continuing';
+
+export function completionOf(game: GameState | null): Completion {
+  if (!game || game.lastProcessedGrowthIndex < COMPLETE_GROWTH_INDEX) return 'growing';
+  return game.keepGrowing ? 'continuing' : 'complete';
+}
+
+/** Last slot that may be generated now: growth pauses at completion until the player decides. */
+function growthCap(game: GameState): number {
+  return game.keepGrowing ? Infinity : COMPLETE_GROWTH_INDEX;
 }
 
 export type PixelReason = 'initial' | 'growth' | 'catchup';
@@ -57,6 +74,17 @@ export function browserLock(): LockFn {
   return (fn) => locks.request('dot-life-growth', fn) as ReturnType<typeof fn>;
 }
 
+/** Player choice -> concrete style. 'cute' / 'cool' sometimes grow into the matching ghost. */
+export function resolveStyle(choice: StyleChoice, initialSeed: number): CreatureStyle {
+  const roll = hash32(initialSeed, 'style') % 100;
+  if (choice === 'random') return CREATURE_STYLES[roll % CREATURE_STYLES.length];
+  if (choice === 'cute') return roll < 30 ? 'ghost' : 'cute';
+  if (choice === 'cool') return roll < 30 ? 'ghostCool' : 'cool';
+  return choice; // a concrete style (tests / imports)
+}
+
+export type StyleChoice = 'cute' | 'cool' | 'random' | CreatureStyle;
+
 /**
  * Orchestrates the game. Growth correctness is derived only from the stored
  * start time, the stored last processed slot and the current time — timers
@@ -78,6 +106,7 @@ export class GameController {
     catchUp: null,
     clockWarning: false,
     locationStatus: null,
+    completion: 'growing',
   };
   private stateListeners = new Set<(s: ControllerState) => void>();
   private pixelListeners = new Set<(e: PixelEvent) => void>();
@@ -111,6 +140,7 @@ export class GameController {
   }
 
   private setState(patch: Partial<ControllerState>) {
+    if ('game' in patch) patch = { ...patch, completion: completionOf(patch.game ?? null) };
     this.state = { ...this.state, ...patch };
     for (const l of this.stateListeners) l(this.state);
   }
@@ -164,10 +194,10 @@ export class GameController {
   }
 
   /** Start a new individual. 'random' picks a style from the seed. */
-  async startNewGame(choice: CreatureStyle | 'random' = 'cute'): Promise<void> {
+  async startNewGame(choice: StyleChoice = 'cute'): Promise<void> {
     const now = this.deps.clock.now();
     const initialSeed = freshSeed();
-    const style: CreatureStyle = choice === 'random' ? CREATURE_STYLES[hash32(initialSeed, 'style') % CREATURE_STYLES.length] : choice;
+    const style = resolveStyle(choice, initialSeed);
     const game: GameState = {
       gameId: `g${now.toString(36)}${initialSeed.toString(36)}`,
       startedAt: now,
@@ -197,7 +227,7 @@ export class GameController {
   /** Cheap check used by the display timer. */
   isGrowthDue(now = this.deps.clock.now()): boolean {
     const g = this.state.game;
-    return !!g && this.state.status === 'ready' && dueGrowthIndex(g.startedAt, now) > g.lastProcessedGrowthIndex;
+    return !!g && this.state.status === 'ready' && Math.min(growthCap(g), dueGrowthIndex(g.startedAt, now)) > g.lastProcessedGrowthIndex;
   }
 
   /** Generate and persist every due slot. Safe to call concurrently. */
@@ -238,7 +268,7 @@ export class GameController {
       this.setState({ clockWarning: false });
     }
 
-    const due = dueGrowthIndex(game.startedAt, now);
+    const due = Math.min(growthCap(game), dueGrowthIndex(game.startedAt, now));
     const last = game.lastProcessedGrowthIndex;
     if (due <= last) return 0;
 
@@ -414,6 +444,39 @@ export class GameController {
     this.updateWeatherState();
     await this.reloadFromDb();
     await this.checkGrowth();
+  }
+
+  // ---- completion & collection ----------------------------------------------
+
+  /** Keep growing past completion; missed time is caught up immediately. */
+  async continueGrowing(): Promise<void> {
+    const g = this.state.game;
+    if (!g) return;
+    const updated = await this.deps.repo.updateGameFlags(g.gameId, { keepGrowing: true });
+    if (updated) this.setState({ game: updated });
+    await this.checkGrowth();
+  }
+
+  /** Move the current creature to the collection (kept, no longer growing) and return to the start screen. */
+  async retireToCollection(): Promise<void> {
+    if (this.growing) await this.growing;
+    await this.lock(() => this.deps.repo.archiveActiveGame(this.deps.clock.now()));
+    this.sim = null;
+    this.pixels = [];
+    this.achieved = new Set();
+    this.setState({ status: 'no-game', game: null, pixelCount: 0, milestones: [], catchUp: null, clockWarning: false, error: null });
+  }
+
+  listCollection(): Promise<GameState[]> {
+    return this.deps.repo.listArchivedGames();
+  }
+
+  loadCollectionPixels(gameId: string): Promise<Pixel[]> {
+    return this.deps.repo.loadPixels(gameId);
+  }
+
+  deleteFromCollection(gameId: string): Promise<void> {
+    return this.deps.repo.deleteArchivedGame(gameId);
   }
 
   async resetGame(): Promise<void> {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DAY_MS } from '../../src/core/constants';
 import { GameRepository } from '../../src/data/repository';
+import { resolveStyle } from '../../src/engine/gameController';
 import { FakeClock, HOUR_MS, T0, failingProvider, fakeGeolocation, makeHarness, okProvider } from '../helpers';
 
 const fingerprint = (ps: { x: number; y: number; color: string; growthIndex: number }[]) =>
@@ -29,15 +30,22 @@ describe('GameController: time-based growth', () => {
     expect(h.controller.getState().pixelCount).toBe(25);
   });
 
-  it('30 days -> 721 dots, and growth continues beyond 30 days', async () => {
+  it('30 days -> 721 dots; growth pauses for the choice, and continues beyond 30 days when chosen', async () => {
     const h = await makeHarness({ clock: new FakeClock(T0) });
     await h.controller.startNewGame();
-    h.clock.advance(30 * DAY_MS);
+    h.clock.advance(29 * DAY_MS);
+    await h.controller.checkGrowth();
+    expect(h.controller.getState().completion).toBe('growing');
+    h.clock.advance(DAY_MS);
     await h.controller.checkGrowth();
     expect(h.controller.getState().pixelCount).toBe(721);
+    expect(h.controller.getState().completion).toBe('complete');
     h.clock.advance(5 * DAY_MS + 30 * 60_000);
     await h.controller.checkGrowth();
-    expect(h.controller.getState().pixelCount).toBe(721 + 120);
+    expect(h.controller.getState().pixelCount).toBe(721); // waiting for the player's choice
+    await h.controller.continueGrowing();
+    expect(h.controller.getState().completion).toBe('continuing');
+    expect(h.controller.getState().pixelCount).toBe(721 + 120); // missed time caught up
   });
 
   it('offline growth is applied on the next launch (restart with a later clock)', async () => {
@@ -140,7 +148,7 @@ describe('GameController: time-based growth', () => {
     const h = await makeHarness({ clock: new FakeClock(T0) });
     await h.controller.startNewGame();
     h.clock.advance(365 * DAY_MS);
-    await h.controller.checkGrowth();
+    await h.controller.continueGrowing();
     const gameId = h.controller.getState().game!.gameId;
     expect(h.controller.getState().pixelCount).toBe(8761);
     const stored = await h.repo.loadPixels(gameId);
@@ -290,20 +298,20 @@ describe('GameController: creature style', () => {
   it('a chosen style is stored, survives restart and export/import', async () => {
     const clock = new FakeClock(T0);
     const a = await makeHarness({ clock });
-    await a.controller.startNewGame('cool');
-    expect(a.controller.getState().game?.style).toBe('cool');
+    await a.controller.startNewGame('ghostCool');
+    expect(a.controller.getState().game?.style).toBe('ghostCool');
     expect(a.controller.simulation?.genome.irisHue).toBeDefined();
     clock.advance(2 * DAY_MS);
     await a.controller.checkGrowth();
     const text = await a.controller.exportSaveText();
-    expect(JSON.parse(text).game.style).toBe('cool');
+    expect(JSON.parse(text).game.style).toBe('ghostCool');
     a.repo.close();
     const b = await makeHarness({ clock, factory: a.factory, storage: a.storage });
-    expect(b.controller.getState().game?.style).toBe('cool');
+    expect(b.controller.getState().game?.style).toBe('ghostCool');
     const before = fingerprint(b.controller.pixels);
     await b.controller.resetGame();
     await b.controller.importSaveText(text);
-    expect(b.controller.getState().game?.style).toBe('cool');
+    expect(b.controller.getState().game?.style).toBe('ghostCool');
     expect(fingerprint(b.controller.pixels)).toBe(before);
   });
 
@@ -316,6 +324,66 @@ describe('GameController: creature style', () => {
     await expect(h.controller.importSaveText(JSON.stringify(save))).rejects.toThrow();
     await h.controller.resetGame();
     await h.controller.startNewGame();
-    expect(h.controller.getState().game?.style).toBe('cute');
+    expect(['cute', 'ghost']).toContain(h.controller.getState().game?.style);
+  });
+
+  it("the 'cute' / 'cool' choices sometimes grow into the matching ghost, never the other family", () => {
+    const seen = { cute: new Set<string>(), cool: new Set<string>() };
+    for (let seed = 1; seed <= 200; seed++) {
+      seen.cute.add(resolveStyle('cute', seed));
+      seen.cool.add(resolveStyle('cool', seed));
+    }
+    expect([...seen.cute].sort()).toEqual(['cute', 'ghost']);
+    expect([...seen.cool].sort()).toEqual(['cool', 'ghostCool']);
+  });
+});
+
+describe('GameController: completion & collection', () => {
+  it('putting a finished creature in the collection keeps it frozen and starts over', async () => {
+    const clock = new FakeClock(T0);
+    const h = await makeHarness({ clock });
+    await h.controller.startNewGame('cute');
+    clock.advance(31 * DAY_MS);
+    await h.controller.checkGrowth();
+    const finished = fingerprint(h.controller.pixels);
+    const oldId = h.controller.getState().game!.gameId;
+    await h.controller.retireToCollection();
+    expect(h.controller.getState().status).toBe('no-game');
+
+    clock.advance(10 * DAY_MS); // time passes: the archived creature must not grow
+    await h.controller.startNewGame('cool');
+    expect(h.controller.getState().pixelCount).toBe(1);
+    const list = await h.controller.listCollection();
+    expect(list.map((g) => g.gameId)).toEqual([oldId]);
+    expect(list[0].lastProcessedGrowthIndex).toBe(720);
+    expect(fingerprint(await h.controller.loadCollectionPixels(oldId))).toBe(finished);
+
+    // survives restart, and resetting / importing the active game leaves the collection alone
+    h.repo.close();
+    const b = await makeHarness({ clock, factory: h.factory, storage: h.storage });
+    expect((await b.controller.listCollection()).length).toBe(1);
+    const text = await b.controller.exportSaveText();
+    await b.controller.resetGame();
+    await b.controller.importSaveText(text);
+    expect((await b.controller.listCollection()).length).toBe(1);
+    expect(fingerprint(await b.controller.loadCollectionPixels(oldId))).toBe(finished);
+
+    // deleting from the collection works only for collection entries
+    await expect(b.controller.deleteFromCollection(b.controller.getState().game!.gameId)).rejects.toThrow();
+    await b.controller.deleteFromCollection(oldId);
+    expect(await b.controller.listCollection()).toEqual([]);
+    expect(await b.repo.countPixels(oldId)).toBe(0);
+  });
+
+  it('a creature that kept growing can still be put away later', async () => {
+    const clock = new FakeClock(T0);
+    const h = await makeHarness({ clock });
+    await h.controller.startNewGame();
+    clock.advance(40 * DAY_MS);
+    await h.controller.checkGrowth();
+    await h.controller.continueGrowing();
+    expect(h.controller.getState().pixelCount).toBe(961);
+    await h.controller.retireToCollection();
+    expect((await h.controller.listCollection())[0].lastProcessedGrowthIndex).toBe(960);
   });
 });

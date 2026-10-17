@@ -46,12 +46,16 @@ test('30 days -> 721 dots, keeps growing afterwards, offline growth applied on r
   await startGame(page);
   await jump(page, 30 * 24 * HOUR);
   await expect(count(page)).toHaveText('721');
+  await expect(page.getByTestId('completion-dialog')).toBeVisible();
   await page.waitForTimeout(3000);
   await page.screenshot({ path: 'test-results/shots/day30.png' });
-  // "close" the app (reload) and come back later
+  // "close" the app (reload) and come back later: still waiting for the choice
   await jump(page, 48 * HOUR);
   await page.reload();
+  await expect(count(page)).toHaveText('721');
+  await page.getByTestId('keep-growing').click();
   await expect(count(page)).toHaveText('769');
+  await expect(page.getByTestId('completion-dialog')).toHaveCount(0);
 });
 
 test('reload keeps positions and colours identical, and history persists', async ({ page }) => {
@@ -163,6 +167,7 @@ test('10,000 dots: main screen renders, zooms and pans', async ({ page }, info) 
   await startGame(page);
   const t0 = Date.now();
   await jump(page, 10_000 * HOUR);
+  await page.getByTestId('keep-growing').click({ timeout: 60_000 });
   await expect(count(page)).toHaveText('10,001', { timeout: 180_000 });
   const catchUpMs = Date.now() - t0;
   const canvas = page.getByTestId('creature-canvas');
@@ -198,26 +203,41 @@ test('10,000 dots: main screen renders, zooms and pans', async ({ page }, info) 
   info.annotations.push({ type: 'perf', description: `catch-up 10,000 slots: ${catchUpMs} ms` });
 });
 
-test('choosing the cool style at start is kept after reload', async ({ page }) => {
+test('start offers only cute / cool / random; the choice is kept after reload', async ({ page }) => {
   await page.clock.install({ time: START });
   await page.goto('/');
+  await expect(page.locator('.style-option')).toHaveCount(3);
   await page.getByTestId('style-cool').click();
   await page.screenshot({ path: 'test-results/shots/start.png' });
   await page.getByTestId('start-button').click();
   await expect(count(page)).toHaveText('1');
   await page.reload();
   await page.getByTestId('open-settings').click();
-  await expect(page.getByTestId('creature-style')).toHaveText('かっこかわいい');
+  await expect(page.getByTestId('creature-style')).toHaveText(/^かっこいい(・おばけ)?$/);
 });
 
-test('the ghost style can be chosen', async ({ page }) => {
-  await page.clock.install({ time: START });
-  await page.goto('/');
-  await page.getByTestId('style-ghost').click();
+test('after 30 days a finished creature goes to the collection and a new one starts', async ({ page }) => {
+  await startGame(page);
+  await jump(page, 30 * 24 * HOUR);
+  await expect(page.getByTestId('completion-dialog')).toBeVisible();
+  await page.getByTestId('start-new-creature').click();
+  await expect(page.getByTestId('start-button')).toBeVisible();
+  await expect(page.getByTestId('start-open-collection')).toHaveText('図鑑を見る（1）');
+  await page.getByTestId('style-random').click();
   await page.getByTestId('start-button').click();
   await expect(count(page)).toHaveText('1');
-  await page.getByTestId('open-settings').click();
-  await expect(page.getByTestId('creature-style')).toHaveText('おばけ（かわいい）');
+  await jump(page, 5 * HOUR);
+  await expect(count(page)).toHaveText('6');
+  await page.getByTestId('open-collection').click();
+  await expect(page.getByTestId('collection-item')).toHaveCount(1);
+  await expect(page.getByTestId('collection-item')).toContainText('721 dots');
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: 'test-results/shots/collection.png' });
+  await page.getByTestId('collection-item').click();
+  await expect(page.getByTestId('collection-detail')).toContainText('721');
+  await page.reload();
+  await page.getByTestId('open-collection').click();
+  await expect(page.getByTestId('collection-item')).toHaveCount(1);
 });
 
 test('production build exposes no time-travel controls', async ({ page }) => {

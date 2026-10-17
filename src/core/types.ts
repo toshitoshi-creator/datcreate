@@ -19,6 +19,10 @@ export interface GameState {
   lastObservedAt: number;
   /** Look chosen at start (v3+). Missing = 'cute'. Fixed for the game's life. */
   style?: CreatureStyle;
+  /** The player chose to keep growing past completion (30 days). */
+  keepGrowing?: boolean;
+  /** Set when the creature was moved to the collection; it no longer grows. */
+  archivedAt?: number;
 }
 
 /** Inputs that influenced a pixel, stored inline so a pixel's environment is reproducible. */

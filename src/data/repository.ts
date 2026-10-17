@@ -146,6 +146,62 @@ export class GameRepository {
     await txDone(tx);
   }
 
+  /** Update flags on a game record (never its pixels or growth index). */
+  async updateGameFlags(gameId: string, patch: Pick<GameState, 'keepGrowing'>): Promise<GameState | null> {
+    const tx = this.tx([STORES.games], 'readwrite');
+    const store = tx.objectStore(STORES.games);
+    const game = (await reqToPromise(store.get(gameId))) as GameState | undefined;
+    if (!game) {
+      await txDone(tx);
+      return null;
+    }
+    const updated = { ...game, ...patch };
+    store.put(updated);
+    await txDone(tx);
+    return updated;
+  }
+
+  /**
+   * Move the active creature to the collection: it keeps all its dots and
+   * history, stops growing, and the app returns to the start screen.
+   */
+  async archiveActiveGame(now: number): Promise<GameState | null> {
+    const tx = this.tx([STORES.games, STORES.meta], 'readwrite');
+    const meta = await reqToPromise(tx.objectStore(STORES.meta).get(ACTIVE_KEY));
+    let archived: GameState | null = null;
+    if (meta?.value) {
+      const games = tx.objectStore(STORES.games);
+      const game = (await reqToPromise(games.get(meta.value))) as GameState | undefined;
+      if (game) {
+        archived = { ...game, archivedAt: now, updatedAt: now };
+        games.put(archived);
+      }
+    }
+    tx.objectStore(STORES.meta).delete(ACTIVE_KEY);
+    await txDone(tx);
+    return archived;
+  }
+
+  /** Creatures in the collection, newest first. */
+  async listArchivedGames(): Promise<GameState[]> {
+    const tx = this.tx([STORES.games]);
+    const all = (await reqToPromise(tx.objectStore(STORES.games).getAll())) as GameState[];
+    return all.filter((g) => g.archivedAt !== undefined).sort((a, b) => b.archivedAt! - a.archivedAt!);
+  }
+
+  /** Delete one creature from the collection (never the active one). */
+  async deleteArchivedGame(gameId: string): Promise<void> {
+    const tx = this.tx([STORES.games, STORES.pixels, STORES.environment, STORES.milestones, STORES.meta], 'readwrite');
+    const meta = await reqToPromise(tx.objectStore(STORES.meta).get(ACTIVE_KEY));
+    const game = (await reqToPromise(tx.objectStore(STORES.games).get(gameId))) as GameState | undefined;
+    if (meta?.value === gameId || !game || game.archivedAt === undefined) {
+      try { tx.abort(); } catch { /* already finished */ }
+      throw new Error('図鑑の個体ではありません');
+    }
+    this.deleteGameInTx(tx, gameId);
+    await txDone(tx);
+  }
+
   async putMilestone(m: Milestone): Promise<void> {
     const tx = this.tx([STORES.milestones], 'readwrite');
     tx.objectStore(STORES.milestones).put(m);

@@ -1,18 +1,26 @@
-import { useState } from 'react';
-import type { CreatureStyle } from '../core/genome';
+import { useEffect, useState } from 'react';
+import type { GameController } from '../engine/gameController';
 
-type Choice = CreatureStyle | 'random';
+type Choice = 'cute' | 'cool' | 'random';
 
 const CHOICES: { value: Choice; label: string; hint: string }[] = [
-  { value: 'cute', label: 'かわいい', hint: 'まるい体・パステル・つぶらな目' },
-  { value: 'cool', label: 'かっこかわいい', hint: 'とがった耳・深い色・光る目' },
-  { value: 'ghost', label: 'おばけ（かわいい）', hint: 'ふわふわの裾・白い体・ほっぺ' },
-  { value: 'ghostCool', label: 'おばけ（かっこかわいい）', hint: '夜色の体・光る目・小さな牙' },
-  { value: 'random', label: 'おまかせ', hint: 'どのタイプになるかは生まれてから' },
+  { value: 'cute', label: 'かわいい', hint: 'まるい体・パステル・ときどきおばけ' },
+  { value: 'cool', label: 'かっこいい', hint: 'とがった耳・深い色・光る目' },
+  { value: 'random', label: 'ランダム', hint: 'どんな子かは生まれてから' },
 ];
 
-export function StartScreen({ onStart }: { onStart: (style: Choice) => Promise<void> }) {
+interface Props {
+  controller: GameController;
+  onStart: (style: Choice) => Promise<void>;
+  onOpenCollection: () => void;
+}
+
+export function StartScreen({ controller, onStart, onOpenCollection }: Props) {
   const [busy, setBusy] = useState(false);
+  const [collected, setCollected] = useState(0);
+  useEffect(() => {
+    controller.listCollection().then((l) => setCollected(l.length)).catch(() => setCollected(0));
+  }, [controller]);
   const [choice, setChoice] = useState<Choice>('cute');
   return (
     <div className="center-screen start-screen">
@@ -56,6 +64,11 @@ export function StartScreen({ onStart }: { onStart: (style: Choice) => Promise<v
       >
         はじめる
       </button>
+      {collected > 0 && (
+        <button className="text-btn" data-testid="start-open-collection" onClick={onOpenCollection}>
+          図鑑を見る（{collected}）
+        </button>
+      )}
     </div>
   );
 }
