@@ -70,6 +70,8 @@ export interface EnvironmentLog {
 export interface Settings {
   soundEnabled: boolean;
   animationEnabled: boolean;
+  /** Pixel-art outline around the body (display only). */
+  outlineEnabled: boolean;
   locationEnabled: boolean;
   /** CSS px per grid cell; null = auto fit. */
   zoomLevel: number | null;

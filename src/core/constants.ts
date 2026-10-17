@@ -4,7 +4,7 @@ export const DAY_MS = 24 * HOUR_MS;
 /** Data format version of persisted records (GameState / save files). */
 export const SCHEMA_VERSION = 1;
 /** Version of the growth algorithm used for newly generated pixels. */
-export const CURRENT_GENERATOR_VERSION = 2;
+export const CURRENT_GENERATOR_VERSION = 3;
 
 export const SAVE_FORMAT = 'dot-life-save';
 

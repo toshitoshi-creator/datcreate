@@ -3,6 +3,7 @@ import {
   FACE_REPLAN_MAX_EPOCH,
   analyzeShape,
   buildFacePlan,
+  buildFuturePlan,
   canPlanFace,
   epochAtOrBefore,
   nextEpochAfter,
@@ -47,7 +48,10 @@ function makePixel(ctx: GeneratorContext, x: number, y: number, parent: CellInfo
   const k = cellKey(x, y);
   const face = analysis?.face ?? null;
   const inFace = !!face && x >= face.box.x0 && x <= face.box.x1 && y >= face.box.y0 && y <= face.box.y1;
-  const hsl = generateColor(rng, model, x, y, genome, slot.env, face?.accent.get(k), face?.strength ?? 0, tuning, inFace);
+  const skip = face && tuning.paintedFace
+    ? (nx: number, ny: number) => face.accent.has(cellKey(nx, ny))
+    : undefined;
+  const hsl = generateColor(rng, model, x, y, genome, slot.env, face?.accent.get(k), face?.strength ?? 0, tuning, inFace, skip);
   return {
     id: `${game.gameId}:${slot.growthIndex}`,
     gameId: game.gameId,
@@ -192,7 +196,7 @@ function generate(ctx: GeneratorContext): Pixel {
       const ad = planDist(c.x, c.y);
       // Adhesion saturates so enclosed gaps are attractive but not overwhelmingly so.
       const adhesion = n4 >= 2 ? 1.6 + 0.3 * (n4 - 2) : n4 * 0.8;
-      s = (genome.cohesion + ew * eff.cohesion) * adhesion + 0.2 * n8;
+      s = (genome.cohesion + ew * eff.cohesion) * adhesion + t.n8Weight * n8;
       if (n8 === 0) s -= Math.max(0.3, 3 - 2.5 * (genome.scatter + ew * eff.scatter));
       s -= genome.compactness * Math.max(0, ad - 0.85) * 2.6;
       s += genome.lobe * noise2(genome.noiseSeed, c.x, c.y, genome.lobeScale);
@@ -211,6 +215,9 @@ function generate(ctx: GeneratorContext): Pixel {
       const a = face.accent.get(c.k);
       if (a === 'eye') s += ob * face.strength * t.eyeBonus;
       else if (a === 'nose') s += ob * face.strength * 0.8;
+      // painted features wait for support so they form inside the body, not on its edge
+      if (t.inkNeedsSupport && (a === 'ink' || a === 'shine' || a === 'cheek') && n8 < t.inkNeedsSupport && !face.enclosed.has(c.k)) s -= ob * face.strength * 8;
+
     }
     s += rng.next() * 0.05;
     scores[i] = s;
@@ -230,7 +237,7 @@ type GeneratorFn = (ctx: GeneratorContext) => Pixel;
  * Registry of generator versions. Existing pixels are never regenerated; a
  * future version only applies to games whose generatorVersion selects it.
  */
-export const GENERATORS: Record<number, GeneratorFn> = { 1: generate, 2: generate };
+export const GENERATORS: Record<number, GeneratorFn> = { 1: generate, 2: generate, 3: generate };
 
 export function isSupportedGenerator(version: number): boolean {
   return Object.prototype.hasOwnProperty.call(GENERATORS, version);
@@ -258,6 +265,12 @@ export class Simulation {
     }
     this.genome = deriveGenome(game.initialSeed, game.generatorVersion);
     this.tuning = tuningFor(game.generatorVersion);
+    if (this.tuning.futureFaceAt > 0) {
+      // v3: the facial plan depends only on the genome, so it is fixed up-front.
+      const plan = buildFuturePlan(this.genome, this.tuning);
+      if (plan) this.facePlans.push(plan);
+      this.facePlanDone = true;
+    }
     this.model = GrowthModel.fromPixels(pixels);
     // Re-derive face plans exactly as they were decided during growth.
     for (let e = nextEpochAfter(0); e < this.model.size && !this.facePlanDone; e = nextEpochAfter(e)) {

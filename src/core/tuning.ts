@@ -39,6 +39,30 @@ export interface Tuning {
   envColorChance: number;
   /** How strongly the core of a face-planned body is smoothed toward one colour. */
   faceColorCalm: number;
+  /** Weight of 8-neighbour contact (higher = smoother outline). */
+  n8Weight: number;
+  /** Vertical stretch of eye zones (1 = round). */
+  eyeAspect: number;
+  /** Eye rim colour accents (v1/v2). */
+  eyeRim: boolean;
+  /** A white highlight dot at the upper-left of each eye (v3). */
+  eyeShine: boolean;
+  /** Scale of per-dot colour jitter. */
+  colorJitter: number;
+  /**
+   * v3: the face is planned up-front for the body's expected size at this many
+   * dots, in empty space the body has yet to grow into (0 = plan from analysis).
+   */
+  futureFaceAt: number;
+  /** <1 applies time/weather colour shifts only partially (softer, no specks). */
+  envColorBlend: number;
+  /**
+   * v3: facial features are colour tendencies on dots placed there (dark eyes
+   * and mouth) instead of gaps, so they never obstruct growth.
+   */
+  paintedFace: boolean;
+  /** v3: painted facial dots are discouraged until this many 8-neighbours exist (0 = off). */
+  inkNeedsSupport: number;
 }
 
 export const TUNINGS: Record<number, Tuning> = {
@@ -68,6 +92,15 @@ export const TUNINGS: Record<number, Tuning> = {
     sparkScale: 1,
     envColorChance: 1,
     faceColorCalm: 0,
+    n8Weight: 0.2,
+    eyeAspect: 1,
+    eyeRim: true,
+    eyeShine: false,
+    colorJitter: 1,
+    futureFaceAt: 0,
+    envColorBlend: 1,
+    paintedFace: false,
+    inkNeedsSupport: 0,
   },
   2: {
     version: 2,
@@ -95,6 +128,51 @@ export const TUNINGS: Record<number, Tuning> = {
     sparkScale: 0.3,
     envColorChance: 0.4,
     faceColorCalm: 0.55,
+    n8Weight: 0.2,
+    eyeAspect: 1,
+    eyeRim: true,
+    eyeShine: false,
+    colorJitter: 1,
+    futureFaceAt: 0,
+    envColorBlend: 1,
+    paintedFace: false,
+    inkNeedsSupport: 0,
+  },
+  3: {
+    version: 3,
+    facePlanMinEpoch: 0,
+    faceMinMain: 0,
+    faceMinCore: 0,
+    faceMinFill: 0,
+    eyeRadiusMin: 1,
+    eyeRadiusMax: 6,
+    eyeYScale: 1,
+    eyeXScale: 1,
+    replanFactor: Infinity,
+    replanRetryFactor: Infinity,
+    brightPupil: false,
+    cheeks: true,
+    crispEyes: false,
+    keepOldPlans: false,
+    hollowDamp: 1.7,
+    hollowPenalty: 20,
+    eyeBonus: 0,
+    limbChance: 0,
+    limbThicknessMax: 2,
+    accentBase: 0,
+    accentGain: 2.2,
+    sparkScale: 0,
+    envColorChance: 0.6,
+    faceColorCalm: 0.85,
+    n8Weight: 0.45,
+    eyeAspect: 1.35,
+    eyeRim: false,
+    eyeShine: true,
+    colorJitter: 0.4,
+    futureFaceAt: 500,
+    envColorBlend: 0.3,
+    paintedFace: true,
+    inkNeedsSupport: 5,
   },
 };
 

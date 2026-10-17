@@ -8,11 +8,11 @@ import type { Tuning } from './tuning';
 import type { EnvUsed } from './types';
 
 /** Circular mean colour of occupied 8-neighbours (or null). */
-function neighbourColor(model: GrowthModel, x: number, y: number): Hsl | null {
+function neighbourColor(model: GrowthModel, x: number, y: number, skip?: (x: number, y: number) => boolean): Hsl | null {
   let sx = 0, sy = 0, s = 0, l = 0, k = 0;
   for (const [dx, dy] of N8) {
     const c = model.get(x + dx, y + dy);
-    if (!c) continue;
+    if (!c || skip?.(x + dx, y + dy)) continue;
     const a = (c.h * Math.PI) / 180;
     sx += Math.cos(a) * (c.s + 0.05);
     sy += Math.sin(a) * (c.s + 0.05);
@@ -57,16 +57,18 @@ export function generateColor(
   faceStrength: number,
   tune: Tuning,
   inFace: boolean,
+  /** v3: neighbours to ignore when inheriting colour (painted facial dots). */
+  skipNeighbour?: (x: number, y: number) => boolean,
 ): Hsl {
   const w = env.environmentInfluence;
   // shifts of individual dots; v2 keeps faces readable by calming the face area
   const wc = w * tune.envColorChance * (inFace ? 1 - tune.faceColorCalm : 1);
   const target = patternTarget(genome, x, y, rng);
-  const nb = neighbourColor(model, x, y);
+  const nb = neighbourColor(model, x, y, skipNeighbour);
   let c: Hsl;
   if (nb && rng.chance(genome.inheritance)) {
     const ps = genome.patternStrength * (inFace ? 1 - tune.faceColorCalm : 1);
-    const jitter = inFace ? 1 - tune.faceColorCalm * 0.7 : 1;
+    const jitter = (inFace ? 1 - tune.faceColorCalm * 0.7 : 1) * tune.colorJitter;
     c = {
       h: pullHue(nb.h, target.h, ps) + rng.gauss() * 4 * jitter,
       s: nb.s + (target.s - nb.s) * ps + rng.gauss() * 0.03 * jitter,
@@ -77,6 +79,7 @@ export function generateColor(
   }
   if (rng.chance(genome.volatility * 0.15)) c.h += rng.gauss() * 40;
 
+  const beforeEnv = { ...c };
   // time of day ---------------------------------------------------------
   const t = rng.next();
   switch (env.timeOfDay) {
@@ -121,9 +124,19 @@ export function generateColor(
       break;
   }
 
+  if (tune.envColorBlend < 1) {
+    // v3: keep the environment's influence but as a gentle tint, not specks
+    const k = tune.envColorBlend;
+    c = { h: pullHue(beforeEnv.h, c.h, k), s: beforeEnv.s + (c.s - beforeEnv.s) * k, l: beforeEnv.l + (c.l - beforeEnv.l) * k };
+  }
+
   // weak facial colour accents (probabilistic) ----------------------------
   if (accent && rng.chance(tune.accentBase + tune.accentGain * faceStrength * env.organicShapeBias)) {
-    if (accent === 'eye' && tune.crispEyes) {
+    if (accent === 'ink') {
+      c = { h: c.h, s: rng.range(0.25, 0.4), l: rng.range(0.13, 0.18) };
+    } else if (accent === 'shine') {
+      c = { h: c.h, s: 0.1, l: rng.range(0.95, 0.99) };
+    } else if (accent === 'eye' && tune.crispEyes) {
       c = { h: c.h, s: rng.range(0.04, 0.14), l: rng.range(0.88, 0.96) };
     } else if (accent === 'eyeRim' && tune.crispEyes) {
       c.l -= rng.range(0.06, 0.14);

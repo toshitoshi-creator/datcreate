@@ -97,6 +97,9 @@ export function SettingsScreen({ services, state, onClose }: Props) {
           <Row label="アニメーション">
             <Toggle testId="toggle-animation" checked={s.animationEnabled} onChange={(on) => store.update({ animationEnabled: on })} />
           </Row>
+          <Row label="輪郭線" hint="体のまわりにドット絵風の縁取りを表示します（表示のみ。データは変わりません）。">
+            <Toggle testId="toggle-outline" checked={s.outlineEnabled} onChange={(on) => store.update({ outlineEnabled: on })} />
+          </Row>
           <Row label="サウンド" hint="観察中に新しいドットが生まれたとき、小さな音を鳴らします。">
             <Toggle testId="toggle-sound" checked={s.soundEnabled} onChange={(on) => store.update({ soundEnabled: on })} />
           </Row>

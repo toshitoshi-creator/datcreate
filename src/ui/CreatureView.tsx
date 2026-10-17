@@ -35,6 +35,7 @@ export const CreatureView = forwardRef<CreatureViewHandle, Props>(function Creat
     rendererRef.current = r;
     const s0 = settingsStore.get();
     r.animationEnabled = s0.animationEnabled;
+    r.outlineEnabled = s0.outlineEnabled;
     if (s0.zoomLevel !== null && s0.viewCenterX !== null && s0.viewCenterY !== null) {
       r.setCamera({ zoom: s0.zoomLevel, cx: s0.viewCenterX, cy: s0.viewCenterY });
     }
@@ -153,6 +154,10 @@ export const CreatureView = forwardRef<CreatureViewHandle, Props>(function Creat
   useEffect(() => {
     rendererRef.current?.setAnimationEnabled(settings.animationEnabled);
   }, [settings.animationEnabled]);
+
+  useEffect(() => {
+    rendererRef.current?.setOutlineEnabled(settings.outlineEnabled);
+  }, [settings.outlineEnabled]);
 
   useEffect(() => {
     // "表示倍率のリセット" from settings clears the stored camera.

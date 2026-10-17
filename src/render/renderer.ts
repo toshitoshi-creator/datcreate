@@ -18,6 +18,8 @@ interface Bounds {
 export const MIN_ZOOM = 0.1;
 export const MAX_ZOOM = 64;
 const BG = '#07080d';
+/** Pixel-art outline colour (display only; never stored). */
+const OUTLINE = '#1c1528';
 const POP_MS = 520;
 const REVEAL_MS = 260;
 const INTRO_MS = 900;
@@ -50,6 +52,9 @@ export class CreatureRenderer {
   private cssH = 1;
   private bake: HTMLCanvasElement;
   private bakeCtx: CanvasRenderingContext2D;
+  /** Same layout as `bake` but every dot in the outline colour. */
+  private sil: HTMLCanvasElement;
+  private silCtx: CanvasRenderingContext2D;
   private bakeOX = 0;
   private bakeOY = 0;
   private baked: Pixel[] = [];
@@ -62,6 +67,7 @@ export class CreatureRenderer {
   private cam: Camera = { zoom: 24, cx: 0.5, cy: 0.5 };
   private auto = true;
   animationEnabled = true;
+  outlineEnabled = true;
   readonly stats: RendererStats = { lastFrameMs: 0, avgFrameMs: 0, frames: 0, pixels: 0 };
   onCameraChange: ((cam: Camera, auto: boolean) => void) | null = null;
 
@@ -71,6 +77,8 @@ export class CreatureRenderer {
     this.ctx = ctx;
     this.bake = document.createElement('canvas');
     this.bakeCtx = this.bake.getContext('2d')!;
+    this.sil = document.createElement('canvas');
+    this.silCtx = this.sil.getContext('2d')!;
     this.allocBake(-16, -16, 32, 32);
     this.resize();
   }
@@ -111,6 +119,11 @@ export class CreatureRenderer {
     this.requestRender();
   }
 
+  setOutlineEnabled(on: boolean) {
+    this.outlineEnabled = on;
+    this.requestRender();
+  }
+
   setAnimationEnabled(on: boolean) {
     this.animationEnabled = on;
     if (!on) this.flushAnimations();
@@ -142,7 +155,11 @@ export class CreatureRenderer {
     this.bake.width = w;
     this.bake.height = h;
     this.bakeCtx.clearRect(0, 0, w, h);
+    this.sil.width = w;
+    this.sil.height = h;
+    this.silCtx.fillStyle = OUTLINE;
     for (const p of this.baked) {
+      this.silCtx.fillRect(p.x - ox, p.y - oy, 1, 1);
       this.bakeCtx.fillStyle = p.color;
       this.bakeCtx.fillRect(p.x - ox, p.y - oy, 1, 1);
     }
@@ -159,6 +176,8 @@ export class CreatureRenderer {
     this.baked.push(p);
     this.bakeCtx.fillStyle = p.color;
     this.bakeCtx.fillRect(p.x - this.bakeOX, p.y - this.bakeOY, 1, 1);
+    this.silCtx.fillStyle = OUTLINE;
+    this.silCtx.fillRect(p.x - this.bakeOX, p.y - this.bakeOY, 1, 1);
   }
 
   // ---- camera ---------------------------------------------------------------
@@ -336,6 +355,13 @@ export class CreatureRenderer {
       // Zoomed in: few cells are visible, so draw them individually with a
       // small gap so each dot reads as a square.
       const gap = Math.max(1, z * 0.08);
+      if (this.outlineEnabled) {
+        ctx.fillStyle = OUTLINE;
+        for (const p of this.baked) {
+          if (p.x + 2 < wx0 || p.x - 1 > wx1 || p.y + 2 < wy0 || p.y - 1 > wy1) continue;
+          ctx.fillRect(toSX(p.x - 1), toSY(p.y - 1), 3 * z, 3 * z);
+        }
+      }
       for (const p of this.baked) {
         if (p.x + 1 < wx0 || p.x > wx1 || p.y + 1 < wy0 || p.y > wy1) continue;
         ctx.fillStyle = p.color;
@@ -346,6 +372,16 @@ export class CreatureRenderer {
       ctx.imageSmoothingEnabled = false;
       const sx0 = Math.max(0, Math.floor(wx0 - this.bakeOX)), sy0 = Math.max(0, Math.floor(wy0 - this.bakeOY));
       const sx1 = Math.min(this.bake.width, Math.ceil(wx1 - this.bakeOX)), sy1 = Math.min(this.bake.height, Math.ceil(wy1 - this.bakeOY));
+      if (sx1 > sx0 && sy1 > sy0 && this.outlineEnabled) {
+        // one-cell outline: the silhouette stamped at the 8 neighbouring offsets
+        for (let oy = -1; oy <= 1; oy++) {
+          for (let ox = -1; ox <= 1; ox++) {
+            if (!ox && !oy) continue;
+            ctx.drawImage(this.sil, sx0, sy0, sx1 - sx0, sy1 - sy0,
+              toSX(this.bakeOX + sx0 + ox), toSY(this.bakeOY + sy0 + oy), (sx1 - sx0) * z, (sy1 - sy0) * z);
+          }
+        }
+      }
       if (sx1 > sx0 && sy1 > sy0) {
         ctx.drawImage(this.bake, sx0, sy0, sx1 - sx0, sy1 - sy0,
           toSX(this.bakeOX + sx0), toSY(this.bakeOY + sy0), (sx1 - sx0) * z, (sy1 - sy0) * z);

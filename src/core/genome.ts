@@ -85,6 +85,7 @@ const DEG = Math.PI / 180;
 
 export function deriveGenome(initialSeed: number, generatorVersion: number): Genome {
   const base = deriveBaseGenome(initialSeed, generatorVersion);
+  if (generatorVersion >= 3) return kawaiify(base, initialSeed, generatorVersion);
   return generatorVersion >= 2 ? characterize(base, initialSeed, generatorVersion) : base;
 }
 
@@ -327,5 +328,93 @@ function characterize(g: Genome, initialSeed: number, generatorVersion: number):
   out.patternStrength = r.range(0.15, 0.4);
   out.saturation = r.chance(0.12) ? r.range(0.15, 0.35) : r.range(0.45, 0.8);
   out.lightness = r.range(0.5, 0.68);
+  return out;
+}
+
+/**
+ * v3: "kawaii" tendencies. Round / mochi-like bodies; ears and feet appear as
+ * small soft lobes of the body-plan field (so they grow rounded, never as thin
+ * tendrils); pastel, nearly flat colour; big wide-set eyes, a small smile and
+ * cheeks. In v3 eye/mouth genes are in units of the planned body size:
+ * dx = fraction of the half-width, dy = fraction of the half-height from the
+ * body centre. Still only probabilities — about 1 in 10 individuals carries
+ * no facial tendency at all.
+ */
+function kawaiify(g: Genome, initialSeed: number, generatorVersion: number): Genome {
+  const r = new Rng(hash32(initialSeed, 'kawaii', generatorVersion));
+  const out: Genome = { ...g };
+
+  const body = r.weighted([0.45, 0.33, 0.22]);
+  const blobs: BlobGene[] = [];
+  if (body === 0) blobs.push({ ox: 0, oy: 0, rx: r.range(1.0, 1.1), ry: r.range(0.9, 1.0) });
+  else if (body === 1) blobs.push({ ox: 0, oy: 0, rx: r.range(1.15, 1.35), ry: r.range(0.78, 0.9) }); // mochi
+  else {
+    blobs.push({ ox: 0, oy: 0, rx: r.range(1.0, 1.1), ry: r.range(0.88, 0.98) }); // head
+    blobs.push({ ox: 0, oy: r.range(0.95, 1.05), rx: r.range(0.6, 0.72), ry: r.range(0.42, 0.55) }); // little body
+  }
+  const head = blobs[0];
+  const bottom = blobs[blobs.length - 1];
+  if (r.chance(0.55)) {
+    if (r.chance(0.75)) {
+      // round / cat-like ears
+      const ex = head.rx * r.range(0.5, 0.65), er = r.range(0.2, 0.28);
+      for (const sgn of [-1, 1]) blobs.push({ ox: sgn * ex, oy: -head.ry * r.range(0.82, 0.92), rx: er, ry: er * r.range(0.9, 1.2) });
+    } else {
+      // long bunny ears
+      const ex = head.rx * r.range(0.28, 0.4);
+      for (const sgn of [-1, 1]) blobs.push({ ox: sgn * ex, oy: -head.ry * r.range(1.15, 1.3), rx: r.range(0.13, 0.18), ry: r.range(0.38, 0.5) });
+    }
+  }
+  if (r.chance(0.7)) {
+    const fx = bottom.rx * r.range(0.4, 0.55), fr = r.range(0.2, 0.27);
+    for (const sgn of [-1, 1]) blobs.push({ ox: sgn * fx, oy: bottom.oy + bottom.ry * 0.9, rx: fr * 1.15, ry: fr * 0.8 });
+  }
+  if (r.chance(0.12)) blobs.push({ ox: (r.chance(0.5) ? 1 : -1) * (bottom.rx + 0.1), oy: bottom.oy + 0.25, rx: 0.2, ry: 0.18 });
+  out.blobs = blobs;
+  out.blobArea = blobs.reduce((sum, b) => sum + b.rx * b.ry, 0);
+
+  // smooth, solid, calm growth
+  out.lobe = r.range(0.05, 0.2);
+  out.lobeScale = r.range(9, 14);
+  out.compactness = r.range(1.9, 2.5);
+  out.cohesion = r.range(1.2, 1.5);
+  out.scatter = 0;
+  out.fill = r.range(1.5, 2.1);
+  out.momentum = r.range(0, 0.2);
+  out.recentParentChance = r.range(0.2, 0.35);
+  out.symmetry = r.chance(0.12) ? r.range(0.4, 0.8) : r.range(1.2, 1.8);
+  out.temperature = r.range(0.4, 0.55);
+  out.limbs = [];
+  out.limbAffinity = 0;
+
+  // face
+  out.faceAffinity = r.chance(0.1) ? r.range(0, 0.05) : r.range(0.8, 1);
+  out.eyeStyle = 'hollow';
+  const sep = r.range(0.36, 0.46);
+  const ey = body === 2 ? r.range(-0.05, 0.12) : r.range(0.0, 0.18);
+  const size = r.range(0.14, 0.18);
+  const tilt = r.chance(0.2) ? r.range(-0.06, 0.06) : 0; // slight, charming asymmetry
+  out.eyes = [{ dx: -sep, dy: ey + tilt, size }, { dx: sep, dy: ey - tilt, size }];
+  out.hasMouth = r.chance(0.85);
+  out.mouthY = ey + r.range(0.3, 0.4);
+  out.mouthWidth = r.range(0.1, 0.17);
+  out.mouthCurve = r.range(0.4, 1);
+  out.mouthDx = 0;
+  out.hasNose = false;
+  out.hasCheeks = r.chance(0.85);
+  out.cheekHue = r.range(340, 360) % 360;
+
+  // pastel, nearly flat colour
+  const hue = r.range(0, 360);
+  out.hue = hue;
+  out.paletteHues = [hue, (hue + r.range(8, 16)) % 360, (hue + 360 - r.range(8, 16)) % 360];
+  out.paletteWeights = [1, 0.3, 0.3];
+  out.saturation = r.chance(0.1) ? r.range(0.12, 0.25) : r.range(0.35, 0.6);
+  out.lightness = r.range(0.7, 0.8);
+  out.pattern = r.chance(0.75) ? 'plain' : 'patches';
+  out.patternScale = r.range(8, 12);
+  out.patternStrength = r.range(0.08, 0.18);
+  out.volatility = 0.005;
+  out.inheritance = 0.97;
   return out;
 }

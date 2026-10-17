@@ -12,7 +12,7 @@ export interface Hole {
   keys: number[];
 }
 
-export type AccentKind = 'eye' | 'eyeRim' | 'nose' | 'cheek';
+export type AccentKind = 'eye' | 'eyeRim' | 'nose' | 'cheek' | 'shine' | 'ink';
 
 /**
  * Weak tendencies for future placement. These are *not* parts: nothing is
@@ -28,6 +28,8 @@ export interface FaceZones {
   eyesFromHoles: number;
   mouthFromHole: boolean;
   hasNose: boolean;
+  /** Painted-face cells that lie in an enclosed gap (v3: free to fill in). */
+  enclosed: Set<number>;
   /** Rough box around the facial features (for calmer face colouring). */
   box: { x0: number; x1: number; y0: number; y1: number };
 }
@@ -115,6 +117,35 @@ export function buildFacePlan(
   return { epoch, eyes, mouth, nose };
 }
 
+/**
+ * v3: facial tendencies planned up-front for the body's expected size at
+ * `t.futureFaceAt` dots. The cells lie in empty space the round body has yet
+ * to grow into, so the body may close around them and a face can *appear*
+ * after some days. Pure function of the genome.
+ */
+export function buildFuturePlan(genome: Genome, t: Tuning): FacePlan | null {
+  if (genome.faceAffinity < 0.1 || t.futureFaceAt <= 0) return null;
+  const Rb = Math.sqrt(t.futureFaceAt / (Math.PI * genome.blobArea));
+  const head = genome.blobs[0];
+  const hw = head.rx * Rb, hh = head.ry * Rb;
+  const cx = head.ox * Rb, cy = head.oy * Rb;
+  const eyes = genome.eyes.map((e) => ({
+    x: Math.round(cx + e.dx * hw),
+    y: Math.round(cy + e.dy * hh),
+    r: Math.max(t.eyeRadiusMin, Math.min(t.eyeRadiusMax, e.size * Rb)),
+  }));
+  const mouth: [number, number][] = [];
+  if (genome.hasMouth) {
+    const my = cy + genome.mouthY * hh;
+    const half = Math.max(1, Math.round(genome.mouthWidth * hw));
+    for (let gx = -half; gx <= half; gx++) {
+      const u = gx / half;
+      mouth.push([Math.round(cx) + gx, Math.round(my - genome.mouthCurve * u * u * 1.2)]);
+    }
+  }
+  return { epoch: 24, eyes, mouth, nose: null };
+}
+
 function buildFaceZones(
   plans: readonly FacePlan[],
   genome: Genome,
@@ -146,28 +177,40 @@ function buildFaceZones(
     eyeCount += plan.eyes.length;
     for (const e of plan.eyes) {
       const R = Math.ceil(e.r + 1.5);
-      grow(e.x, e.y, e.r + 2);
+      const Ry = Math.ceil(e.r * t.eyeAspect + 1.5);
+      grow(e.x, e.y, e.r * t.eyeAspect + 2);
       const pupil = Math.max(0.5, e.r * 0.45);
-      for (let gy = e.y - R; gy <= e.y + R; gy++) {
+      for (let gy = e.y - Ry; gy <= e.y + Ry; gy++) {
         for (let gx = e.x - R; gx <= e.x + R; gx++) {
-          const d = Math.hypot(gx - e.x, gy - e.y);
+          const d = Math.hypot(gx - e.x, (gy - e.y) / t.eyeAspect);
           const k = cellKey(gx, gy);
           if (pupilEyes) {
             // bright sclera around a small dark (empty) pupil
             if (d <= pupil) { hollow.set(k, st); accent.delete(k); }
             else if (d <= e.r + 0.7) { accent.set(k, 'eye'); hollow.delete(k); }
             else if (d <= e.r + 1.6 && !hollow.has(k) && !accent.has(k)) accent.set(k, 'eyeRim');
+          } else if (d <= e.r && t.paintedFace) {
+            accent.set(k, 'ink'); // dark eye colour on whatever dot lands here
+            hollow.delete(k);
           } else if (d <= e.r) {
             if (genome.eyeStyle === 'hollow') { hollow.set(k, st); accent.delete(k); }
             else { accent.set(k, 'eye'); hollow.delete(k); }
-          } else if (d <= e.r + 1.3 && !hollow.has(k) && !accent.has(k)) {
+          } else if (t.eyeRim && d <= e.r + 1.3 && !hollow.has(k) && !accent.has(k)) {
             accent.set(k, 'eyeRim');
           }
         }
       }
-      if (genome.eyeStyle === 'hollow' && !occupied(e.x, e.y)) {
+      if (t.eyeShine) {
+        // a single highlight dot at the upper-left of the eye
+        const sk = cellKey(Math.round(e.x - e.r * 0.4), Math.round(e.y - e.r * t.eyeAspect * 0.45));
+        hollow.delete(sk);
+        accent.set(sk, 'shine');
+      }
+      if (t.paintedFace) {
+        if (occupied(e.x, e.y) && occupied(e.x, e.y - 1) && occupied(e.x, e.y + 1)) eyesFromHoles++;
+      } else if (genome.eyeStyle === 'hollow' && !occupied(e.x, e.y)) {
         const h = holeOf(e.x, e.y);
-        if (h && h.size <= 60) eyesFromHoles++;
+        if (h && h.size <= (t.eyeShine ? 200 : 60)) eyesFromHoles++;
       } else if (pupilEyes) {
         let ring = 0;
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) if (occupied(e.x + dx, e.y + dy)) ring++;
@@ -178,7 +221,7 @@ function buildFaceZones(
       if (t.cheeks && genome.hasCheeks && plan.eyes.length >= 2) {
         const side = e.x < plan.eyes.reduce((sum, q) => sum + q.x, 0) / plan.eyes.length ? -1 : 1;
         const cx = Math.round(e.x + side * Math.max(1, e.r * 0.6));
-        const cy = Math.round(e.y + e.r + 2);
+        const cy = Math.round(e.y + e.r * t.eyeAspect + (t.eyeAspect > 1 ? 1 : 2));
         for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0]] as const) {
           const k = cellKey(cx + dx, cy + dy);
           if (!hollow.has(k) && !accent.has(k)) accent.set(k, 'cheek');
@@ -190,6 +233,12 @@ function buildFaceZones(
       for (const [x, y] of plan.mouth) {
         grow(x, y, 1);
         const k = cellKey(x, y);
+        if (t.paintedFace) {
+          accent.set(k, 'ink');
+          hollow.delete(k);
+          if (occupied(x, y)) enclosed++;
+          continue;
+        }
         hollow.set(k, st * 0.9);
         accent.delete(k);
         if (!occupied(x, y) && holeOf(x, y)) enclosed++;
@@ -204,7 +253,13 @@ function buildFaceZones(
       }
     }
   });
-  return { strength, hollow, accent, eyeCount, eyesFromHoles, mouthFromHole, hasNose, box: { x0: bx0, x1: bx1, y0: by0, y1: by1 } };
+  const enclosed = new Set<number>();
+  if (t.paintedFace) {
+    const holeKeys = new Set<number>();
+    for (const h of holes) for (const k of h.keys) holeKeys.add(k);
+    for (const k of accent.keys()) if (holeKeys.has(k)) enclosed.add(k);
+  }
+  return { strength, hollow, accent, eyeCount, eyesFromHoles, mouthFromHole, hasNose, enclosed, box: { x0: bx0, x1: bx1, y0: by0, y1: by1 } };
 }
 
 export interface LimbState {

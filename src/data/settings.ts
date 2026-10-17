@@ -5,6 +5,7 @@ export const SETTINGS_KEY = 'dotlife.settings.v1';
 export const DEFAULT_SETTINGS: Settings = {
   soundEnabled: false,
   animationEnabled: true,
+  outlineEnabled: true,
   locationEnabled: false,
   zoomLevel: null,
   viewCenterX: null,
@@ -23,6 +24,7 @@ export function sanitizeSettings(raw: unknown): Settings {
   return {
     soundEnabled: bool(r.soundEnabled, d.soundEnabled),
     animationEnabled: bool(r.animationEnabled, d.animationEnabled),
+    outlineEnabled: bool(r.outlineEnabled, d.outlineEnabled),
     locationEnabled: bool(r.locationEnabled, d.locationEnabled),
     zoomLevel: numOrNull(r.zoomLevel),
     viewCenterX: numOrNull(r.viewCenterX),
