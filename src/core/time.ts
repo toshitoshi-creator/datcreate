@@ -37,7 +37,9 @@ export function elapsedParts(startedAt: number, now: number) {
 
 export function formatCountdown(ms: number): string {
   const s = Math.max(0, Math.ceil(ms / 1000));
-  const m = Math.floor(s / 60);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
-  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  const mmss = `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  return h > 0 ? `${h}:${mmss}` : mmss;
 }
