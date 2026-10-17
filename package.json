@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "sim": "vite-node scripts/simulate.ts"
+    "sim": "vite-node scripts/simulate.ts",
+    "build:demo": "tsc -b && VITE_DEMO_TIME=1 vite build --outDir dist-demo"
   },
   "dependencies": {
     "react": "^18.3.1",

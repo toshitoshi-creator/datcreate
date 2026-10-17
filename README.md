@@ -16,6 +16,7 @@ npm install
 npm run dev        # 開発サーバー（画面左下に DEV 時間送りパネル。開発時のみ）
 npm run build      # 型チェック + 本番ビルド → dist/
 npm run preview    # ビルドの確認
+npm run build:demo # 体験版（⏩ 時間送りボタン付き）を dist-demo/ に出力。本番ビルドには含まれません
 npm test           # ユニットテスト
 npm run test:e2e   # E2E（本番ビルドに対して実行。Playwright の fake clock で時間を進める）
 npm run sim -- 720 16 1   # 開発用: 個体を16体育てて scripts/out/ に一覧PNGを出力

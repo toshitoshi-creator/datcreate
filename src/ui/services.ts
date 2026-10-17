@@ -17,8 +17,9 @@ let services: Promise<AppServices> | null = null;
 /** Singleton wiring of the app (created once per page). */
 export function getServices(): Promise<AppServices> {
   services ??= (async () => {
-    // The adjustable clock exists only in dev builds; production uses real time.
-    const devClock = import.meta.env.DEV ? new DevClock() : null;
+    // The adjustable clock exists only in dev builds and the trial bundle;
+    // the normal production build uses real time.
+    const devClock = import.meta.env.DEV || import.meta.env.VITE_DEMO_TIME === '1' ? new DevClock() : null;
     const clock = devClock ?? systemClock;
     const settings = new SettingsStore();
     const repo = await GameRepository.open(indexedDB);

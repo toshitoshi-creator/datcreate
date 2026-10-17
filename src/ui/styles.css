@@ -478,34 +478,44 @@ button {
   height: 20px;
 }
 
-/* ---- dev only --------------------------------------------------------------- */
+/* ---- time-skip (dev builds / trial bundle only) --------------------------- */
 
 .dev-panel {
   position: absolute;
-  left: 12px;
+  left: 16px;
   bottom: calc(env(safe-area-inset-bottom) + 150px);
-  font-size: 12px;
+  font-size: 13px;
+  max-width: calc(100% - 96px);
 }
 .dev-toggle {
-  background: #3a1f1f;
-  border: 1px solid #7a3a3a;
-  border-radius: 8px;
-  padding: 4px 8px;
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 200, 120, 0.45);
+  background: rgba(60, 40, 20, 0.75);
+  color: #ffd9a0;
 }
 .dev-body {
-  margin-top: 6px;
+  margin-top: 8px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
   background: var(--panel-solid);
-  padding: 8px;
-  border-radius: 8px;
+  border: 1px solid var(--line);
+  padding: 10px;
+  border-radius: 12px;
 }
-.dev-body button {
+.dev-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.dev-steps button {
+  min-height: 40px;
+  padding: 6px 12px;
   background: #222638;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 4px 8px;
+  border-radius: 10px;
 }
 
 /* ---- start screen style picker -------------------------------------------- */

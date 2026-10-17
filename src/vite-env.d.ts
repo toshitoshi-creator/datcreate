@@ -3,4 +3,6 @@
 interface ImportMetaEnv {
   readonly VITE_OPENWEATHER_API_KEY?: string;
   readonly VITE_WEATHER_API_BASE?: string;
+  /** '1' builds the trial bundle with the time-skip panel. */
+  readonly VITE_DEMO_TIME?: string;
 }

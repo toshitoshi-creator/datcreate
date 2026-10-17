@@ -7,15 +7,17 @@ export const systemClock: Clock = { now: () => Date.now() };
 const DEV_OFFSET_KEY = 'dotlife.dev.clockOffset';
 
 /**
- * Development-only clock with a manual offset, used by the dev panel. It is
- * only constructed when import.meta.env.DEV is true, so production builds
- * never expose a way to fast-forward time.
+ * Clock with a manual offset, used by the time-skip panel. It is only
+ * constructed in dev builds and in the separately built trial bundle
+ * (VITE_DEMO_TIME=1); the normal production build never exposes a way to
+ * fast-forward time. The offset persists so a reload does not look like the
+ * clock going backwards.
  */
 export class DevClock implements Clock {
   private offset: number;
 
   constructor() {
-    this.offset = Number(sessionStorage.getItem(DEV_OFFSET_KEY) ?? 0) || 0;
+    this.offset = Number(safeGet(DEV_OFFSET_KEY) ?? 0) || 0;
   }
 
   now(): number {
@@ -24,15 +26,32 @@ export class DevClock implements Clock {
 
   advance(ms: number) {
     this.offset += ms;
-    sessionStorage.setItem(DEV_OFFSET_KEY, String(this.offset));
+    safeSet(DEV_OFFSET_KEY, String(this.offset));
   }
 
   reset() {
     this.offset = 0;
-    sessionStorage.removeItem(DEV_OFFSET_KEY);
+    safeSet(DEV_OFFSET_KEY, null);
   }
 
   get offsetMs() {
     return this.offset;
+  }
+}
+
+function safeGet(k: string): string | null {
+  try {
+    return localStorage.getItem(k);
+  } catch {
+    return null;
+  }
+}
+
+function safeSet(k: string, v: string | null) {
+  try {
+    if (v === null) localStorage.removeItem(k);
+    else localStorage.setItem(k, v);
+  } catch {
+    /* storage unavailable: offset stays in memory */
   }
 }
