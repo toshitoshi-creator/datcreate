@@ -110,3 +110,39 @@ describe('generator v3 (kawaii)', () => {
     expect(dark).toBeLessThan(5);
   });
 });
+
+describe("generator v3 'cool' style (かっこかわいい)", () => {
+  const cool = (seed: number, n: number) => grow(seed, n, (i) => envAt((9 + i) % 24), 3, 'cool');
+  const fpStyle = (seed: number) =>
+    createHash('sha256').update(cool(seed, 900).pixels.map((p) => `${p.x},${p.y},${p.color}`).join('|')).digest('hex').slice(0, 16);
+
+  it('output is frozen', () => {
+    expect([42, 7919, 2654435761].map(fpStyle)).toEqual(['bc613c04349bc961', '855f21eff5ab60a4', 'f751266877c15481']);
+  });
+
+  it('differs from the cute style for the same seed, and resumes identically after a restart', () => {
+    const full = cool(42, 600).pixels;
+    expect(full.map((p) => p.color)).not.toEqual(grow(42, 600, (i) => envAt((9 + i) % 24), 3).pixels.map((p) => p.color));
+    for (const cut of [1, 200, 451]) {
+      const sim = new Simulation({ gameId: 'test', initialSeed: 42, generatorVersion: 3, style: 'cool' }, full.slice(0, cut));
+      for (let i = cut; i < 600; i++) {
+        expect(sim.generateNext({ createdAt: T0 + i * HOUR_MS, env: envAt((9 + i) % 24), environmentSnapshotId: null }).pixel).toEqual(full[i]);
+      }
+    }
+  });
+
+  it('usually grows glowing eyes on a darker body, without tendrils', () => {
+    let faces = 0, abstract = 0, darker = 0;
+    for (let k = 1; k <= 30; k++) {
+      const { sim } = cool(k * 7919, 720);
+      expect(sim.genome.limbs).toHaveLength(0);
+      if (sim.genome.lightness < 0.5) darker++;
+      if (!sim.plans.length) { abstract++; continue; }
+      if ((sim.currentAnalysis()?.face?.eyesFromHoles ?? 0) >= 2) faces++;
+      expect(sim.genome.irisHue).toBeDefined();
+    }
+    console.info(`[cool] two glowing eyes at 720 dots: ${faces}/30, abstract: ${abstract}/30`);
+    expect(faces).toBeGreaterThanOrEqual(20);
+    expect(darker).toBe(30);
+  });
+});

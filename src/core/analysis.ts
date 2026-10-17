@@ -12,7 +12,7 @@ export interface Hole {
   keys: number[];
 }
 
-export type AccentKind = 'eye' | 'eyeRim' | 'nose' | 'cheek' | 'shine' | 'ink';
+export type AccentKind = 'eye' | 'eyeRim' | 'nose' | 'cheek' | 'shine' | 'ink' | 'mouth' | 'fang' | 'crest';
 
 /**
  * Weak tendencies for future placement. These are *not* parts: nothing is
@@ -44,6 +44,9 @@ export interface FacePlan {
   eyes: { x: number; y: number; r: number }[];
   mouth: [number, number][];
   nose: { x: number; y: number } | null;
+  /** 'cool' style extras (v3). */
+  fang?: [number, number] | null;
+  crest?: [number, number][];
 }
 
 export const FACE_PLAN_MAX_EPOCH = 700;
@@ -143,7 +146,18 @@ export function buildFuturePlan(genome: Genome, t: Tuning): FacePlan | null {
       mouth.push([Math.round(cx) + gx, Math.round(my - genome.mouthCurve * u * u * 1.2)]);
     }
   }
-  return { epoch: 24, eyes, mouth, nose: null };
+  let fang: [number, number] | null = null;
+  if (genome.hasFang && mouth.length >= 2) {
+    const [fx, fy] = mouth[Math.round((mouth.length - 1) * 0.72)];
+    fang = [fx, fy + 1];
+  }
+  const crest: [number, number][] = [];
+  if (genome.crestHue !== undefined && eyes.length) {
+    const ey = eyes.reduce((sum, e) => sum + e.y, 0) / eyes.length;
+    const x0 = Math.round(cx), y0 = Math.round(ey - 0.42 * hh);
+    for (const [dx, dy] of [[0, -1], [-1, 0], [0, 0], [1, 0], [0, 1]] as const) crest.push([x0 + dx, y0 + dy]);
+  }
+  return genome.hasFang !== undefined || crest.length ? { epoch: 24, eyes, mouth, nose: null, fang, crest } : { epoch: 24, eyes, mouth, nose: null };
 }
 
 function buildFaceZones(
@@ -175,14 +189,20 @@ function buildFaceZones(
   plans.forEach((plan, i) => {
     const st = i === plans.length - 1 ? strength : strength * 0.6;
     eyeCount += plan.eyes.length;
+    const asp = genome.eyeAspect ?? t.eyeAspect;
+    const tilt = genome.eyeTilt ?? 0;
+    const midX = plan.eyes.reduce((sum, q) => sum + q.x, 0) / Math.max(1, plan.eyes.length);
     for (const e of plan.eyes) {
       const R = Math.ceil(e.r + 1.5);
-      const Ry = Math.ceil(e.r * t.eyeAspect + 1.5);
-      grow(e.x, e.y, e.r * t.eyeAspect + 2);
+      const Ry = Math.ceil(e.r * asp + 1.5 + Math.abs(tilt) * R);
+      const outward = e.x < midX ? -1 : 1;
+      grow(e.x, e.y, e.r * asp + 2);
       const pupil = Math.max(0.5, e.r * 0.45);
       for (let gy = e.y - Ry; gy <= e.y + Ry; gy++) {
         for (let gx = e.x - R; gx <= e.x + R; gx++) {
-          const d = Math.hypot(gx - e.x, (gy - e.y) / t.eyeAspect);
+          // tilt shears the ellipse so the outer corner sits higher (upturned eyes)
+          const dyy = tilt ? gy - e.y + tilt * (gx - e.x) * outward : gy - e.y;
+          const d = Math.hypot(gx - e.x, dyy / asp);
           const k = cellKey(gx, gy);
           if (pupilEyes) {
             // bright sclera around a small dark (empty) pupil
@@ -202,7 +222,7 @@ function buildFaceZones(
       }
       if (t.eyeShine) {
         // a single highlight dot at the upper-left of the eye
-        const sk = cellKey(Math.round(e.x - e.r * 0.4), Math.round(e.y - e.r * t.eyeAspect * 0.45));
+        const sk = cellKey(Math.round(e.x - e.r * 0.4), Math.round(e.y - e.r * asp * 0.45 + (tilt ? tilt * e.r * 0.4 * outward : 0)));
         hollow.delete(sk);
         accent.set(sk, 'shine');
       }
@@ -221,7 +241,7 @@ function buildFaceZones(
       if (t.cheeks && genome.hasCheeks && plan.eyes.length >= 2) {
         const side = e.x < plan.eyes.reduce((sum, q) => sum + q.x, 0) / plan.eyes.length ? -1 : 1;
         const cx = Math.round(e.x + side * Math.max(1, e.r * 0.6));
-        const cy = Math.round(e.y + e.r * t.eyeAspect + (t.eyeAspect > 1 ? 1 : 2));
+        const cy = Math.round(e.y + e.r * asp + (t.eyeAspect > 1 ? 1 : 2));
         for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0]] as const) {
           const k = cellKey(cx + dx, cy + dy);
           if (!hollow.has(k) && !accent.has(k)) accent.set(k, 'cheek');
@@ -234,7 +254,7 @@ function buildFaceZones(
         grow(x, y, 1);
         const k = cellKey(x, y);
         if (t.paintedFace) {
-          accent.set(k, 'ink');
+          accent.set(k, 'mouth');
           hollow.delete(k);
           if (occupied(x, y)) enclosed++;
           continue;
@@ -244,6 +264,11 @@ function buildFaceZones(
         if (!occupied(x, y) && holeOf(x, y)) enclosed++;
       }
       if (enclosed >= Math.max(2, plan.mouth.length * 0.5)) mouthFromHole = true;
+    }
+    if (plan.fang) accent.set(cellKey(plan.fang[0], plan.fang[1]), 'fang');
+    for (const [x, y] of plan.crest ?? []) {
+      const k = cellKey(x, y);
+      if (!accent.has(k)) accent.set(k, 'crest');
     }
     if (plan.nose) {
       hasNose = true;

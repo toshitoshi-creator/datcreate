@@ -20,7 +20,7 @@ const weathers: Weather[] = ['clear', 'cloudy', 'rain', 'unknown', 'unknown', 'c
 const t0 = Date.now();
 for (let i = 0; i < count; i++) {
   const seed = (seedOffset + i) * 2654435761 >>> 0;
-  const sim = new Simulation({ gameId: `g${i}`, initialSeed: seed, generatorVersion: Number(process.env.VER ?? 1) });
+  const sim = new Simulation({ gameId: `g${i}`, initialSeed: seed, generatorVersion: Number(process.env.VER ?? 1), style: process.env.STYLE === 'cool' ? 'cool' : undefined });
   for (let k = 0; k < pixels; k++) {
     const hour = (9 + k) % 24;
     sim.generateNext({
@@ -54,6 +54,6 @@ for (let i = 0; i < count; i++) {
 import { hslToHex } from '../src/core/color';
 function hexFromCell(h: number, s: number, l: number) { return hslToHex({ h, s, l }); }
 mkdirSync('scripts/out', { recursive: true });
-const file = `scripts/out/sheet-v${process.env.VER ?? 1}-${pixels}-${seedOffset}.png`;
+const file = `scripts/out/sheet-v${process.env.VER ?? 1}${process.env.STYLE ?? ""}-${pixels}-${seedOffset}.png`;
 writeFileSync(file, encodePng(W, H, img));
 console.log('wrote', file, `${Date.now() - t0}ms`);

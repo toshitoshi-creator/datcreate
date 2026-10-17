@@ -1,6 +1,7 @@
 import { IDBFactory } from 'fake-indexeddb';
 import { HOUR_MS } from '../src/core/constants';
 import { Simulation } from '../src/core/generator';
+import type { CreatureStyle } from '../src/core/genome';
 import { timeOfDayFromHour } from '../src/core/time';
 import type { EnvUsed, Pixel, Weather } from '../src/core/types';
 import { GameRepository } from '../src/data/repository';
@@ -121,8 +122,9 @@ export function grow(
   count: number,
   envFor: (i: number) => EnvUsed = (i) => envAt((9 + i) % 24),
   generatorVersion = 1,
+  style?: CreatureStyle,
 ): { sim: Simulation; pixels: Pixel[] } {
-  const sim = new Simulation({ gameId: 'test', initialSeed: seed, generatorVersion });
+  const sim = new Simulation({ gameId: 'test', initialSeed: seed, generatorVersion, style });
   const pixels: Pixel[] = [];
   for (let i = 0; i < count; i++) {
     pixels.push(sim.generateNext({ createdAt: T0 + i * HOUR_MS, env: envFor(i), environmentSnapshotId: null }).pixel);

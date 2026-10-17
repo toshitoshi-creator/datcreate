@@ -27,6 +27,14 @@ function neighbourColor(model: GrowthModel, x: number, y: number, skip?: (x: num
 /** Palette region at a cell according to the individual's marking pattern. */
 function patternTarget(genome: Genome, x: number, y: number, rng: Rng): Hsl {
   const sc = genome.patternScale;
+  if (genome.pattern === 'belly') {
+    // lighter belly in the lower middle, sized for the planned body
+    const Rb = Math.sqrt(500 / (Math.PI * genome.blobArea));
+    const inBelly = (x / (0.52 * Rb)) ** 2 + ((y - 0.5 * Rb) / (0.42 * Rb)) ** 2 <= 1;
+    return inBelly
+      ? { h: genome.paletteHues[0], s: genome.saturation * 0.6, l: Math.min(0.82, genome.lightness + 0.24) }
+      : { h: genome.paletteHues[0], s: genome.saturation, l: genome.lightness };
+  }
   let v: number;
   switch (genome.pattern) {
     case 'stripes-h': v = Math.sin((y / sc) * Math.PI + noise2(genome.colorSeed, x, y, sc * 3) * 1.5); break;
@@ -132,8 +140,14 @@ export function generateColor(
 
   // weak facial colour accents (probabilistic) ----------------------------
   if (accent && rng.chance(tune.accentBase + tune.accentGain * faceStrength * env.organicShapeBias)) {
-    if (accent === 'ink') {
+    if ((accent === 'ink' && genome.irisHue === undefined) || accent === 'mouth') {
       c = { h: c.h, s: rng.range(0.25, 0.4), l: rng.range(0.13, 0.18) };
+    } else if (accent === 'ink') {
+      c = { h: genome.irisHue! + rng.gauss() * 3, s: rng.range(0.8, 0.95), l: rng.range(0.56, 0.62) }; // glowing eyes
+    } else if (accent === 'fang') {
+      c = { h: c.h, s: 0.05, l: rng.range(0.93, 0.97) };
+    } else if (accent === 'crest') {
+      c = { h: genome.crestHue! + rng.gauss() * 3, s: rng.range(0.7, 0.85), l: rng.range(0.6, 0.68) };
     } else if (accent === 'shine') {
       c = { h: c.h, s: 0.1, l: rng.range(0.95, 0.99) };
     } else if (accent === 'eye' && tune.crispEyes) {

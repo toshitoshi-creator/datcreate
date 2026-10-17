@@ -29,7 +29,7 @@ export interface SlotInput {
   environmentSnapshotId: string | null;
 }
 
-export type GameIdentity = Pick<GameState, 'gameId' | 'initialSeed' | 'generatorVersion'>;
+export type GameIdentity = Pick<GameState, 'gameId' | 'initialSeed' | 'generatorVersion' | 'style'>;
 
 interface GeneratorContext {
   game: GameIdentity;
@@ -216,7 +216,7 @@ function generate(ctx: GeneratorContext): Pixel {
       if (a === 'eye') s += ob * face.strength * t.eyeBonus;
       else if (a === 'nose') s += ob * face.strength * 0.8;
       // painted features wait for support so they form inside the body, not on its edge
-      if (t.inkNeedsSupport && (a === 'ink' || a === 'shine' || a === 'cheek') && n8 < t.inkNeedsSupport && !face.enclosed.has(c.k)) s -= ob * face.strength * 8;
+      if (t.inkNeedsSupport && (a === 'ink' || a === 'shine' || a === 'cheek' || a === 'mouth' || a === 'fang' || a === 'crest') && n8 < t.inkNeedsSupport && !face.enclosed.has(c.k)) s -= ob * face.strength * 8;
 
     }
     s += rng.next() * 0.05;
@@ -263,7 +263,7 @@ export class Simulation {
     if (!isSupportedGenerator(game.generatorVersion)) {
       throw new Error(`Unsupported generator version ${game.generatorVersion}`);
     }
-    this.genome = deriveGenome(game.initialSeed, game.generatorVersion);
+    this.genome = deriveGenome(game.initialSeed, game.generatorVersion, game.style);
     this.tuning = tuningFor(game.generatorVersion);
     if (this.tuning.futureFaceAt > 0) {
       // v3: the facial plan depends only on the genome, so it is fixed up-front.

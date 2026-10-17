@@ -1,7 +1,8 @@
 import { CLOCK_ROLLBACK_TOLERANCE_MS, CURRENT_GENERATOR_VERSION, SCHEMA_VERSION, WEATHER_VALID_MS } from '../core/constants';
 import { Simulation } from '../core/generator';
 import { detectMilestones, sortMilestones } from '../core/milestones';
-import { freshSeed } from '../core/rng';
+import type { CreatureStyle } from '../core/genome';
+import { freshSeed, hash32 } from '../core/rng';
 import { dueGrowthIndex, growthTime, timeOfDayFromHour } from '../core/time';
 import type { EnvUsed, EnvironmentLog, FetchStatus, GameState, Milestone, Pixel } from '../core/types';
 import { GrowthConflictError, type GameRepository } from '../data/repository';
@@ -162,9 +163,11 @@ export class GameController {
     this.emitPixels(pixels, 'initial');
   }
 
-  async startNewGame(): Promise<void> {
+  /** Start a new individual. 'random' picks a style from the seed. */
+  async startNewGame(choice: CreatureStyle | 'random' = 'cute'): Promise<void> {
     const now = this.deps.clock.now();
     const initialSeed = freshSeed();
+    const style: CreatureStyle = choice === 'random' ? (hash32(initialSeed, 'style') % 2 ? 'cool' : 'cute') : choice;
     const game: GameState = {
       gameId: `g${now.toString(36)}${initialSeed.toString(36)}`,
       startedAt: now,
@@ -175,6 +178,7 @@ export class GameController {
       createdAt: now,
       updatedAt: now,
       lastObservedAt: now,
+      style,
     };
     const sim = new Simulation(game);
     const slot = this.envForSlot(now);

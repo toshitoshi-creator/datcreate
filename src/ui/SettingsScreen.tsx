@@ -70,6 +70,12 @@ export function SettingsScreen({ services, state, onClose }: Props) {
         <span />
       </header>
       <div className="sheet-body">
+        <Section title="この個体">
+          <Row label="タイプ" hint="タイプは生まれたときに決まり、途中で変わりません。">
+            <span data-testid="creature-style">{state.game?.style === 'cool' ? 'かっこかわいい' : 'かわいい'}</span>
+          </Row>
+        </Section>
+
         <Section title="環境">
           <Row label="位置情報を使って天気を反映" hint="座標は保存・表示しません。天気の取得にだけ使います。">
             <Toggle

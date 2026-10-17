@@ -198,6 +198,18 @@ test('10,000 dots: main screen renders, zooms and pans', async ({ page }, info) 
   info.annotations.push({ type: 'perf', description: `catch-up 10,000 slots: ${catchUpMs} ms` });
 });
 
+test('choosing the cool style at start is kept after reload', async ({ page }) => {
+  await page.clock.install({ time: START });
+  await page.goto('/');
+  await page.getByTestId('style-cool').click();
+  await page.screenshot({ path: 'test-results/shots/start.png' });
+  await page.getByTestId('start-button').click();
+  await expect(count(page)).toHaveText('1');
+  await page.reload();
+  await page.getByTestId('open-settings').click();
+  await expect(page.getByTestId('creature-style')).toHaveText('かっこかわいい');
+});
+
 test('production build exposes no time-travel controls', async ({ page }) => {
   await startGame(page);
   await expect(page.locator('.dev-panel')).toHaveCount(0);

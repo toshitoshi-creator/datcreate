@@ -34,7 +34,7 @@ function Game({ services }: { services: AppServices }) {
 
   if (state.status === 'loading') return <Splash />;
   if (state.status === 'error') return <ErrorView message={state.error ?? '不明なエラー'} />;
-  if (state.status === 'no-game') return <StartScreen onStart={() => services.controller.startNewGame()} />;
+  if (state.status === 'no-game') return <StartScreen onStart={(style) => services.controller.startNewGame(style)} />;
   return (
     <>
       <MainScreen services={services} state={state} onOpen={setScreen} hidden={screen !== 'main'} />

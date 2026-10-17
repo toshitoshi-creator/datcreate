@@ -1,3 +1,4 @@
+import type { CreatureStyle } from './genome';
 import type { TimeOfDay } from './time';
 
 export type Weather = 'clear' | 'cloudy' | 'rain' | 'snow' | 'storm' | 'fog' | 'unknown';
@@ -16,6 +17,8 @@ export interface GameState {
   updatedAt: number;
   /** Latest wall-clock time seen; used to detect clock rollbacks. */
   lastObservedAt: number;
+  /** Look chosen at start (v3+). Missing = 'cute'. Fixed for the game's life. */
+  style?: CreatureStyle;
 }
 
 /** Inputs that influenced a pixel, stored inline so a pixel's environment is reproducible. */

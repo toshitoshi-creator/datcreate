@@ -1,7 +1,17 @@
 import { useState } from 'react';
+import type { CreatureStyle } from '../core/genome';
 
-export function StartScreen({ onStart }: { onStart: () => Promise<void> }) {
+type Choice = CreatureStyle | 'random';
+
+const CHOICES: { value: Choice; label: string; hint: string }[] = [
+  { value: 'cute', label: 'かわいい', hint: 'まるい体・パステル・つぶらな目' },
+  { value: 'cool', label: 'かっこかわいい', hint: 'とがった耳・深い色・光る目' },
+  { value: 'random', label: 'おまかせ', hint: 'どちらになるかは生まれてから' },
+];
+
+export function StartScreen({ onStart }: { onStart: (style: Choice) => Promise<void> }) {
   const [busy, setBusy] = useState(false);
+  const [choice, setChoice] = useState<Choice>('cute');
   return (
     <div className="center-screen start-screen">
       <div className="splash-dot" />
@@ -13,6 +23,22 @@ export function StartScreen({ onStart }: { onStart: () => Promise<void> }) {
         <br />
         どんな存在になるかは、時間と環境しだい。
       </p>
+      <div className="style-picker" role="radiogroup" aria-label="タイプ">
+        {CHOICES.map((c) => (
+          <button
+            key={c.value}
+            role="radio"
+            aria-checked={choice === c.value}
+            className={`style-option ${choice === c.value ? 'selected' : ''}`}
+            data-testid={`style-${c.value}`}
+            onClick={() => setChoice(c.value)}
+          >
+            <span>{c.label}</span>
+            <small>{c.hint}</small>
+          </button>
+        ))}
+      </div>
+      <p className="muted small">タイプは「なりやすさ」の傾向です。形や顔は育ってみるまでわかりません。</p>
       <button
         className="btn primary"
         data-testid="start-button"
@@ -20,7 +46,7 @@ export function StartScreen({ onStart }: { onStart: () => Promise<void> }) {
         onClick={async () => {
           setBusy(true);
           try {
-            await onStart();
+            await onStart(choice);
           } finally {
             setBusy(false);
           }

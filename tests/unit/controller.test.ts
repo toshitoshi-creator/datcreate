@@ -285,3 +285,37 @@ describe('GameController: history & save data', () => {
     expect(fingerprint(stored)).toBe(before);
   });
 });
+
+describe('GameController: creature style', () => {
+  it('a chosen style is stored, survives restart and export/import', async () => {
+    const clock = new FakeClock(T0);
+    const a = await makeHarness({ clock });
+    await a.controller.startNewGame('cool');
+    expect(a.controller.getState().game?.style).toBe('cool');
+    expect(a.controller.simulation?.genome.irisHue).toBeDefined();
+    clock.advance(2 * DAY_MS);
+    await a.controller.checkGrowth();
+    const text = await a.controller.exportSaveText();
+    expect(JSON.parse(text).game.style).toBe('cool');
+    a.repo.close();
+    const b = await makeHarness({ clock, factory: a.factory, storage: a.storage });
+    expect(b.controller.getState().game?.style).toBe('cool');
+    const before = fingerprint(b.controller.pixels);
+    await b.controller.resetGame();
+    await b.controller.importSaveText(text);
+    expect(b.controller.getState().game?.style).toBe('cool');
+    expect(fingerprint(b.controller.pixels)).toBe(before);
+  });
+
+  it("'random' picks one of the styles; default is cute; invalid style in a save is rejected", async () => {
+    const h = await makeHarness({ clock: new FakeClock(T0) });
+    await h.controller.startNewGame('random');
+    expect(['cute', 'cool']).toContain(h.controller.getState().game?.style);
+    const save = JSON.parse(await h.controller.exportSaveText());
+    save.game.style = 'scary';
+    await expect(h.controller.importSaveText(JSON.stringify(save))).rejects.toThrow();
+    await h.controller.resetGame();
+    await h.controller.startNewGame();
+    expect(h.controller.getState().game?.style).toBe('cute');
+  });
+});
