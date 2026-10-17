@@ -15,7 +15,7 @@ for (const c of CASES) {
   test(`preview ${c}`, async ({ page }) => {
     const seed = (k * 2654435761) >>> 0;
     const startedAt = Date.now() - (n - 1) * HOUR_MS - 60_000;
-    const game = { gameId: 'pv', startedAt, lastProcessedGrowthIndex: n - 1, schemaVersion: 1, generatorVersion: 3, initialSeed: seed, style: (process.env.STYLE === 'cool' ? 'cool' : 'cute') as 'cool' | 'cute', createdAt: startedAt, updatedAt: startedAt, lastObservedAt: startedAt };
+    const game = { gameId: 'pv', startedAt, lastProcessedGrowthIndex: n - 1, schemaVersion: 1, generatorVersion: 3, initialSeed: seed, style: (process.env.STYLE ?? 'cute') as 'cute' | 'cool' | 'ghost' | 'ghostCool', createdAt: startedAt, updatedAt: startedAt, lastObservedAt: startedAt };
     const sim = new Simulation(game);
     const pixels = [];
     for (let i = 0; i < n; i++) {

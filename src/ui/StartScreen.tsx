@@ -6,7 +6,9 @@ type Choice = CreatureStyle | 'random';
 const CHOICES: { value: Choice; label: string; hint: string }[] = [
   { value: 'cute', label: 'かわいい', hint: 'まるい体・パステル・つぶらな目' },
   { value: 'cool', label: 'かっこかわいい', hint: 'とがった耳・深い色・光る目' },
-  { value: 'random', label: 'おまかせ', hint: 'どちらになるかは生まれてから' },
+  { value: 'ghost', label: 'おばけ（かわいい）', hint: 'ふわふわの裾・白い体・ほっぺ' },
+  { value: 'ghostCool', label: 'おばけ（かっこかわいい）', hint: '夜色の体・光る目・小さな牙' },
+  { value: 'random', label: 'おまかせ', hint: 'どのタイプになるかは生まれてから' },
 ];
 
 export function StartScreen({ onStart }: { onStart: (style: Choice) => Promise<void> }) {

@@ -35,7 +35,9 @@ export interface BlobGene {
 export type ColorPattern = 'patches' | 'stripes-h' | 'stripes-v' | 'rings' | 'plain' | 'speckle' | 'belly';
 
 /** Look chosen when the game starts (v3+). Undefined = 'cute'. */
-export type CreatureStyle = 'cute' | 'cool';
+export type CreatureStyle = 'cute' | 'cool' | 'ghost' | 'ghostCool';
+
+export const CREATURE_STYLES: readonly CreatureStyle[] = ['cute', 'cool', 'ghost', 'ghostCool'];
 
 export interface Genome {
   // shape
@@ -92,6 +94,12 @@ export interface Genome {
   hasFang?: boolean;
   /** A small mark on the forehead. */
   crestHue?: number;
+  /** Small open "o" mouth instead of a smile line (ghost style). */
+  mouthO?: boolean;
+  /** Pulls the eye highlight toward the eye centre (ghost style; 1 = default, 0 = no highlight). */
+  shineInset?: number;
+  /** Facial colour tendencies apply at full strength from the start (ghost style). */
+  firmFace?: boolean;
 }
 
 const DEG = Math.PI / 180;
@@ -100,7 +108,9 @@ export function deriveGenome(initialSeed: number, generatorVersion: number, styl
   const base = deriveBaseGenome(initialSeed, generatorVersion);
   if (generatorVersion >= 3) {
     const cute = kawaiify(base, initialSeed, generatorVersion);
-    return style === 'cool' ? coolify(cute, initialSeed, generatorVersion) : cute;
+    if (style === 'cool') return coolify(cute, initialSeed, generatorVersion);
+    if (style === 'ghost' || style === 'ghostCool') return ghostify(cute, initialSeed, generatorVersion, style === 'ghostCool');
+    return cute;
   }
   return generatorVersion >= 2 ? characterize(base, initialSeed, generatorVersion) : base;
 }
@@ -510,6 +520,93 @@ function coolify(g: Genome, initialSeed: number, generatorVersion: number): Geno
   out.lightness = fam === 3 ? r.range(0.27, 0.34) : r.range(0.32, 0.44);
   out.pattern = (['belly', 'plain', 'patches'] as const)[r.weighted([0.45, 0.4, 0.15])];
   out.patternStrength = r.range(0.06, 0.1); // dark bodies show mottling easily
+  out.patternScale = r.range(10, 14);
+  return out;
+}
+
+/**
+ * v3 ghost styles — friendly, never scary. A domed body with a wavy,
+ * scalloped hem or a curled wisp tail (all rounded lobes of the body-plan
+ * field), sometimes little hands. 'cute': pale, softly tinted body, big dark
+ * oval eyes, a tiny smile or small "o" mouth and cheeks. 'cool': deep indigo /
+ * teal body with glowing eyes (no red), a smirk and a small fang.
+ */
+function ghostify(g: Genome, initialSeed: number, generatorVersion: number, cool: boolean): Genome {
+  const r = new Rng(hash32(initialSeed, cool ? 'ghostCool' : 'ghost', generatorVersion));
+  const out: Genome = { ...g };
+
+  const blobs: BlobGene[] = [];
+  const main: BlobGene = { ox: 0, oy: -0.2, rx: r.range(0.94, 1.0), ry: r.range(0.88, 0.95) };
+  blobs.push(main);
+  const hemY = main.oy + main.ry * 0.85;
+  if (r.chance(cool ? 0.7 : 0.85)) {
+    // scalloped hem: a row of round lobes below the dome leaves soft waves
+    const k = r.chance(0.55) ? 3 : 4;
+    const rx = k === 3 ? r.range(0.2, 0.23) : r.range(0.15, 0.17);
+    for (let i = 0; i < k; i++) {
+      const x = (i / (k - 1) - 0.5) * 2 * main.rx * 0.72;
+      blobs.push({ ox: x, oy: hemY + 0.05, rx, ry: r.range(0.3, 0.36) });
+    }
+  } else {
+    // wisp tail curling to one side
+    const side = r.chance(0.5) ? 1 : -1;
+    blobs.push({ ox: 0, oy: hemY - 0.05, rx: main.rx * 0.72, ry: 0.4 });
+    blobs.push({ ox: side * 0.34, oy: hemY + 0.26, rx: 0.42, ry: 0.27 });
+    blobs.push({ ox: side * 0.62, oy: hemY + 0.44, rx: 0.25, ry: 0.18 });
+    blobs.push({ ox: side * 0.8, oy: hemY + 0.48, rx: 0.14, ry: 0.12 });
+  }
+  if (r.chance(0.5)) {
+    // little hands, raised a bit
+    for (const sgn of [-1, 1]) blobs.push({ ox: sgn * main.rx * 1.0, oy: main.oy + r.range(0.1, 0.3), rx: r.range(0.17, 0.21), ry: r.range(0.13, 0.17) });
+  }
+  out.blobs = blobs;
+  out.blobArea = blobs.reduce((sum, b) => sum + b.rx * b.ry, 0);
+  out.symmetry = r.range(1.3, 1.8);
+  out.compactness = r.range(2.5, 2.9); // follow the dome-and-hem outline closely
+  out.fill = r.range(1.1, 1.5);
+  out.firmFace = true; // eyes sit close to the centre and are reached early
+  out.shineInset = cool ? 0.55 : 0; // pale ghosts: solid dark eyes (a white glint would read as a hole)
+
+  // face (dx/dy relative to the main dome)
+  const sep = r.range(0.3, 0.38);
+  const ey = r.range(-0.12, 0.04);
+  out.hasMouth = true;
+  out.mouthY = ey + r.range(0.28, 0.34);
+  out.mouthDx = 0;
+  if (cool) {
+    const size = r.range(0.19, 0.23);
+    out.eyes = [{ dx: -sep, dy: ey, size }, { dx: sep, dy: ey, size }];
+    out.eyeAspect = r.range(0.8, 0.92);
+    out.eyeTilt = r.range(0.2, 0.32);
+    out.irisHue = [188, 205, 48, 150][r.weighted([0.36, 0.2, 0.24, 0.2])] + r.range(-6, 6);
+    out.mouthWidth = r.range(0.07, 0.1);
+    out.mouthCurve = r.range(0.15, 0.4);
+    out.hasFang = r.chance(0.6);
+    out.hasCheeks = false;
+    out.crestHue = undefined;
+    const teal = r.chance(0.3);
+    const hue = teal ? r.range(176, 194) : r.range(232, 275);
+    out.hue = hue;
+    out.paletteHues = [hue, (hue + 8) % 360, (hue + 352) % 360];
+    out.saturation = r.range(0.3, 0.5);
+    out.lightness = r.range(0.32, 0.42);
+    out.pattern = r.chance(0.5) ? 'belly' : 'plain';
+  } else {
+    const size = r.range(0.16, 0.21);
+    out.eyes = [{ dx: -sep, dy: ey, size }, { dx: sep, dy: ey, size }];
+    out.mouthO = r.chance(0.4);
+    out.mouthWidth = r.range(0.07, 0.11);
+    out.mouthCurve = r.range(0.4, 0.9);
+    out.hasCheeks = r.chance(0.9);
+    out.cheekHue = r.range(338, 358);
+    const hue = [270, 160, 335, 205][r.weighted([0.32, 0.22, 0.22, 0.24])] + r.range(-10, 10);
+    out.hue = hue;
+    out.paletteHues = [hue, (hue + 8) % 360, (hue + 352) % 360];
+    out.saturation = r.range(0.14, 0.32);
+    out.lightness = r.range(0.86, 0.91);
+    out.pattern = 'plain';
+  }
+  out.patternStrength = r.range(0.05, 0.1);
   out.patternScale = r.range(10, 14);
   return out;
 }

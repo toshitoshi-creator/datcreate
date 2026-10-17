@@ -310,7 +310,7 @@ describe('GameController: creature style', () => {
   it("'random' picks one of the styles; default is cute; invalid style in a save is rejected", async () => {
     const h = await makeHarness({ clock: new FakeClock(T0) });
     await h.controller.startNewGame('random');
-    expect(['cute', 'cool']).toContain(h.controller.getState().game?.style);
+    expect(['cute', 'cool', 'ghost', 'ghostCool']).toContain(h.controller.getState().game?.style);
     const save = JSON.parse(await h.controller.exportSaveText());
     save.game.style = 'scary';
     await expect(h.controller.importSaveText(JSON.stringify(save))).rejects.toThrow();

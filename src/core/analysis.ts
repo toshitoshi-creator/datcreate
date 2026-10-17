@@ -138,7 +138,11 @@ export function buildFuturePlan(genome: Genome, t: Tuning): FacePlan | null {
     r: Math.max(t.eyeRadiusMin, Math.min(t.eyeRadiusMax, e.size * Rb)),
   }));
   const mouth: [number, number][] = [];
-  if (genome.hasMouth) {
+  if (genome.hasMouth && genome.mouthO) {
+    // small open "o" mouth: a 3 x 2 block
+    const my = Math.round(cy + genome.mouthY * hh);
+    for (const dy of [0, 1]) for (const dx of [-1, 0, 1]) mouth.push([Math.round(cx) + dx, my + dy]);
+  } else if (genome.hasMouth) {
     const my = cy + genome.mouthY * hh;
     const half = Math.max(1, Math.round(genome.mouthWidth * hw));
     for (let gx = -half; gx <= half; gx++) {
@@ -220,9 +224,10 @@ function buildFaceZones(
           }
         }
       }
-      if (t.eyeShine) {
+      if (t.eyeShine && genome.shineInset !== 0) {
         // a single highlight dot at the upper-left of the eye
-        const sk = cellKey(Math.round(e.x - e.r * 0.4), Math.round(e.y - e.r * asp * 0.45 + (tilt ? tilt * e.r * 0.4 * outward : 0)));
+        const si = genome.shineInset ?? 1;
+        const sk = cellKey(Math.round(e.x - e.r * 0.4 * si), Math.round(e.y - e.r * asp * 0.45 * si + (tilt ? tilt * e.r * 0.4 * outward : 0)));
         hollow.delete(sk);
         accent.set(sk, 'shine');
       }

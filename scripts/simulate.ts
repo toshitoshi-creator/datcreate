@@ -5,6 +5,7 @@
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { Simulation } from '../src/core/generator';
+import type { CreatureStyle } from '../src/core/genome';
 import { hexToRgb } from '../src/core/color';
 import { timeOfDayFromHour } from '../src/core/time';
 import type { Weather } from '../src/core/types';
@@ -20,7 +21,7 @@ const weathers: Weather[] = ['clear', 'cloudy', 'rain', 'unknown', 'unknown', 'c
 const t0 = Date.now();
 for (let i = 0; i < count; i++) {
   const seed = (seedOffset + i) * 2654435761 >>> 0;
-  const sim = new Simulation({ gameId: `g${i}`, initialSeed: seed, generatorVersion: Number(process.env.VER ?? 1), style: process.env.STYLE === 'cool' ? 'cool' : undefined });
+  const sim = new Simulation({ gameId: `g${i}`, initialSeed: seed, generatorVersion: Number(process.env.VER ?? 1), style: (process.env.STYLE as CreatureStyle | undefined) || undefined });
   for (let k = 0; k < pixels; k++) {
     const hour = (9 + k) % 24;
     sim.generateNext({

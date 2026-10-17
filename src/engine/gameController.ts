@@ -1,7 +1,7 @@
 import { CLOCK_ROLLBACK_TOLERANCE_MS, CURRENT_GENERATOR_VERSION, SCHEMA_VERSION, WEATHER_VALID_MS } from '../core/constants';
 import { Simulation } from '../core/generator';
 import { detectMilestones, sortMilestones } from '../core/milestones';
-import type { CreatureStyle } from '../core/genome';
+import { CREATURE_STYLES, type CreatureStyle } from '../core/genome';
 import { freshSeed, hash32 } from '../core/rng';
 import { dueGrowthIndex, growthTime, timeOfDayFromHour } from '../core/time';
 import type { EnvUsed, EnvironmentLog, FetchStatus, GameState, Milestone, Pixel } from '../core/types';
@@ -167,7 +167,7 @@ export class GameController {
   async startNewGame(choice: CreatureStyle | 'random' = 'cute'): Promise<void> {
     const now = this.deps.clock.now();
     const initialSeed = freshSeed();
-    const style: CreatureStyle = choice === 'random' ? (hash32(initialSeed, 'style') % 2 ? 'cool' : 'cute') : choice;
+    const style: CreatureStyle = choice === 'random' ? CREATURE_STYLES[hash32(initialSeed, 'style') % CREATURE_STYLES.length] : choice;
     const game: GameState = {
       gameId: `g${now.toString(36)}${initialSeed.toString(36)}`,
       startedAt: now,

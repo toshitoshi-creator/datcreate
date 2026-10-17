@@ -1,5 +1,6 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { WEATHER_LABEL } from '../core/environment';
+import type { CreatureStyle } from '../core/genome';
 import type { FetchStatus } from '../core/types';
 import type { ControllerState } from '../engine/gameController';
 import { useSettings } from './hooks';
@@ -12,6 +13,13 @@ const STATUS_LABEL: Record<FetchStatus, string> = {
   disabled: '位置情報オフのため天気は使用していません',
   denied: '位置情報が許可されませんでした',
   unavailable: 'この端末では位置情報を利用できません',
+};
+
+const STYLE_LABEL: Record<CreatureStyle, string> = {
+  cute: 'かわいい',
+  cool: 'かっこかわいい',
+  ghost: 'おばけ（かわいい）',
+  ghostCool: 'おばけ（かっこかわいい）',
 };
 
 const fmt = new Intl.DateTimeFormat('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -72,7 +80,7 @@ export function SettingsScreen({ services, state, onClose }: Props) {
       <div className="sheet-body">
         <Section title="この個体">
           <Row label="タイプ" hint="タイプは生まれたときに決まり、途中で変わりません。">
-            <span data-testid="creature-style">{state.game?.style === 'cool' ? 'かっこかわいい' : 'かわいい'}</span>
+            <span data-testid="creature-style">{STYLE_LABEL[state.game?.style ?? 'cute']}</span>
           </Row>
         </Section>
 

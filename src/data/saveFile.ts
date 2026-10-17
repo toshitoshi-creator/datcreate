@@ -1,6 +1,7 @@
 import { HEX_COLOR_RE } from '../core/color';
 import { SAVE_FORMAT, SCHEMA_VERSION } from '../core/constants';
 import { isSupportedGenerator } from '../core/generator';
+import { CREATURE_STYLES, type CreatureStyle } from '../core/genome';
 import type { EnvironmentLog, GameState, Milestone, Pixel } from '../core/types';
 
 export interface SaveFile {
@@ -68,7 +69,7 @@ export function validateSave(input: unknown): ValidationResult {
   if (!isInt(g.lastProcessedGrowthIndex) || (g.lastProcessedGrowthIndex as number) < 0) errors.push('game.lastProcessedGrowthIndex が不正です');
   if (!isInt(g.initialSeed) || (g.initialSeed as number) < 0 || (g.initialSeed as number) > 0xffffffff) errors.push('game.initialSeed が不正です');
   if (!isInt(g.generatorVersion) || !isSupportedGenerator(g.generatorVersion as number)) errors.push('未対応の generatorVersion です');
-  if (g.style !== undefined && g.style !== 'cute' && g.style !== 'cool') errors.push('game.style が不正です');
+  if (g.style !== undefined && !CREATURE_STYLES.includes(g.style as CreatureStyle)) errors.push('game.style が不正です');
   if (errors.length) return { ok: false, errors };
 
   const pixels = raw.pixels;
@@ -115,7 +116,7 @@ export function validateSave(input: unknown): ValidationResult {
     createdAt: g.createdAt as number,
     updatedAt: g.updatedAt as number,
     lastObservedAt: isNum(g.lastObservedAt) ? (g.lastObservedAt as number) : (g.updatedAt as number),
-    ...(g.style === 'cool' || g.style === 'cute' ? { style: g.style } : {}),
+    ...(g.style !== undefined ? { style: g.style as CreatureStyle } : {}),
   };
   return {
     ok: true,

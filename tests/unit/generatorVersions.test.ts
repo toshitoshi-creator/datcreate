@@ -146,3 +146,48 @@ describe("generator v3 'cool' style (かっこかわいい)", () => {
     expect(darker).toBe(30);
   });
 });
+
+describe('generator v3 ghost styles (おばけ)', () => {
+  const ghost = (seed: number, n: number, style: 'ghost' | 'ghostCool') => grow(seed, n, (i) => envAt((9 + i) % 24), 3, style);
+  const fpStyle = (seed: number, style: 'ghost' | 'ghostCool') =>
+    createHash('sha256').update(ghost(seed, 900, style).pixels.map((p) => `${p.x},${p.y},${p.color}`).join('|')).digest('hex').slice(0, 16);
+
+  it('outputs are frozen', () => {
+    expect([42, 7919, 2654435761].map((s) => fpStyle(s, 'ghost'))).toEqual(['3cbd443c29d2e59f', 'cbf52f44473ec782', 'a0956681560b8632']);
+    expect([42, 7919, 2654435761].map((s) => fpStyle(s, 'ghostCool'))).toEqual(['7214635152949579', '4e39d69fc3833528', 'b43f9f80ef497f5b']);
+  });
+
+  it('resumes identically after a restart', () => {
+    for (const style of ['ghost', 'ghostCool'] as const) {
+      const full = ghost(42, 500, style).pixels;
+      for (const cut of [1, 120, 333]) {
+        const sim = new Simulation({ gameId: 'test', initialSeed: 42, generatorVersion: 3, style }, full.slice(0, cut));
+        for (let i = cut; i < 500; i++) {
+          expect(sim.generateNext({ createdAt: T0 + i * HOUR_MS, env: envAt((9 + i) % 24), environmentSnapshotId: null }).pixel).toEqual(full[i]);
+        }
+      }
+    }
+  });
+
+  it('stay friendly: faces form, pale cute ghosts with dark eyes, cool ghosts never get red eyes', () => {
+    for (const style of ['ghost', 'ghostCool'] as const) {
+      let faces = 0;
+      for (let k = 1; k <= 30; k++) {
+        const { sim } = ghost(k * 7919, 720, style);
+        const g = sim.genome;
+        expect(g.limbs).toHaveLength(0);
+        expect(g.blobs.length).toBeGreaterThanOrEqual(4); // dome + hem / wisp lobes
+        if (style === 'ghost') {
+          expect(g.lightness).toBeGreaterThan(0.8);
+          expect(g.irisHue).toBeUndefined();
+        } else {
+          const h = g.irisHue!;
+          expect(h > 20 && h < 330).toBe(true); // no red glow
+        }
+        if (sim.plans.length && (sim.currentAnalysis()?.face?.eyesFromHoles ?? 0) >= 2) faces++;
+      }
+      console.info(`[${style}] two eyes at 720 dots: ${faces}/30`);
+      expect(faces).toBeGreaterThanOrEqual(20);
+    }
+  });
+});

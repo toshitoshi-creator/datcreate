@@ -51,7 +51,8 @@ function makePixel(ctx: GeneratorContext, x: number, y: number, parent: CellInfo
   const skip = face && tuning.paintedFace
     ? (nx: number, ny: number) => face.accent.has(cellKey(nx, ny))
     : undefined;
-  const hsl = generateColor(rng, model, x, y, genome, slot.env, face?.accent.get(k), face?.strength ?? 0, tuning, inFace, skip);
+  const faceStrength = face ? (genome.firmFace ? genome.faceAffinity : face.strength) : 0;
+  const hsl = generateColor(rng, model, x, y, genome, slot.env, face?.accent.get(k), faceStrength, tuning, inFace, skip);
   return {
     id: `${game.gameId}:${slot.growthIndex}`,
     gameId: game.gameId,
