@@ -165,7 +165,7 @@ export class GameRepository {
    * Move the active creature to the collection: it keeps all its dots and
    * history, stops growing, and the app returns to the start screen.
    */
-  async archiveActiveGame(now: number): Promise<GameState | null> {
+  async archiveActiveGame(now: number, name: string): Promise<GameState | null> {
     const tx = this.tx([STORES.games, STORES.meta], 'readwrite');
     const meta = await reqToPromise(tx.objectStore(STORES.meta).get(ACTIVE_KEY));
     let archived: GameState | null = null;
@@ -173,7 +173,7 @@ export class GameRepository {
       const games = tx.objectStore(STORES.games);
       const game = (await reqToPromise(games.get(meta.value))) as GameState | undefined;
       if (game) {
-        archived = { ...game, archivedAt: now, updatedAt: now };
+        archived = { ...game, archivedAt: now, updatedAt: now, name };
         games.put(archived);
       }
     }
@@ -187,6 +187,21 @@ export class GameRepository {
     const tx = this.tx([STORES.games]);
     const all = (await reqToPromise(tx.objectStore(STORES.games).getAll())) as GameState[];
     return all.filter((g) => g.archivedAt !== undefined).sort((a, b) => b.archivedAt! - a.archivedAt!);
+  }
+
+  /** Rename a creature in the collection. Duplicate names are allowed. */
+  async renameArchivedGame(gameId: string, name: string): Promise<GameState> {
+    const tx = this.tx([STORES.games], 'readwrite');
+    const store = tx.objectStore(STORES.games);
+    const game = (await reqToPromise(store.get(gameId))) as GameState | undefined;
+    if (!game || game.archivedAt === undefined) {
+      try { tx.abort(); } catch { /* already finished */ }
+      throw new Error('図鑑の個体ではありません');
+    }
+    const updated = { ...game, name };
+    store.put(updated);
+    await txDone(tx);
+    return updated;
   }
 
   /** Delete one creature from the collection (never the active one). */

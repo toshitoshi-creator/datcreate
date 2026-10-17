@@ -3,6 +3,7 @@ import { WEATHER_LABEL } from '../core/environment';
 import type { FetchStatus } from '../core/types';
 import type { ControllerState } from '../engine/gameController';
 import { useSettings } from './hooks';
+import { NameForm } from './NameForm';
 import { STYLE_LABEL } from './styleLabels';
 import type { AppServices } from './services';
 
@@ -77,7 +78,7 @@ export function SettingsScreen({ services, state, onClose }: Props) {
             <span data-testid="creature-style">{STYLE_LABEL[state.game?.style ?? 'cute']}</span>
           </Row>
           {state.completion !== 'growing' && (
-            <Row label="図鑑にしまう" hint="この子を今の姿のまま図鑑に保存して、新しい子を育てます。">
+            <Row label="図鑑にしまう" hint="名前をつけて今の姿のまま図鑑に保存し、新しい子を育てます。">
               <button className="btn small" data-testid="retire-from-settings" disabled={busy} onClick={() => setConfirmRetire(true)}>
                 新しい子を育てる
               </button>
@@ -169,20 +170,22 @@ export function SettingsScreen({ services, state, onClose }: Props) {
         />
       )}
       {confirmRetire && (
-        <Confirm
-          title="図鑑にしまって、新しい子を育てますか？"
-          body="この子は今の姿のまま図鑑に保存され、成長はそこで止まります。"
-          confirmLabel="新しい子を育てる"
-          testId="confirm-retire"
-          onCancel={() => setConfirmRetire(false)}
-          onConfirm={() => {
-            setConfirmRetire(false);
-            void run(async () => {
-              await controller.retireToCollection();
-              onClose();
-            });
-          }}
-        />
+        <div className="modal-backdrop" role="dialog" aria-label="図鑑にしまう">
+          <div className="modal">
+            <h3>名前をつけて図鑑にしまう</h3>
+            <p>この子は今の姿のまま図鑑に保存され、成長はそこで止まります。そのあと新しい子を育てます。</p>
+            <NameForm
+              initial={controller.suggestName()}
+              submitLabel="図鑑に保存して、新しい子を育てる"
+              onCancel={() => setConfirmRetire(false)}
+              onSubmit={async (name) => {
+                await controller.retireToCollection(name);
+                setConfirmRetire(false);
+                onClose();
+              }}
+            />
+          </div>
+        </div>
       )}
       {pendingImport !== null && (
         <Confirm

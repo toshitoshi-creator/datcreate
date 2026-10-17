@@ -3,6 +3,7 @@ import { DAY_MS } from '../core/constants';
 import type { GameState, Pixel } from '../core/types';
 import type { GameController } from '../engine/gameController';
 import { drawThumbnail } from '../render/renderer';
+import { NameForm } from './NameForm';
 import { STYLE_LABEL } from './styleLabels';
 
 const fmt = new Intl.DateTimeFormat('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -30,7 +31,12 @@ export function CollectionScreen({ controller, onClose }: { controller: GameCont
         {open ? (
           <CollectionDetail
             game={open}
+            number={items ? items.length - items.findIndex((g) => g.gameId === open.gameId) : 0}
             controller={controller}
+            onRenamed={(g) => {
+              setOpen(g);
+              void reload();
+            }}
             onDeleted={() => {
               setOpen(null);
               void reload();
@@ -47,7 +53,8 @@ export function CollectionScreen({ controller, onClose }: { controller: GameCont
               <li key={g.gameId}>
                 <button className="collection-card" onClick={() => setOpen(g)} data-testid="collection-item">
                   <Thumb controller={controller} game={g} size={150} />
-                  <span className="collection-no">No.{items.length - i}</span>
+                  <span className="collection-name" data-testid="collection-name">{displayName(g, items.length - i)}</span>
+                  <span className="muted small">No.{items.length - i}</span>
                   <span className="muted small">{STYLE_LABEL[g.style ?? 'cute']}</span>
                   <span className="muted small">{(g.lastProcessedGrowthIndex + 1).toLocaleString()} dots</span>
                 </button>
@@ -77,12 +84,44 @@ function Thumb({ controller, game, size }: { controller: GameController; game: G
   return <canvas ref={ref} width={px} height={px} className="collection-thumb" style={{ width: size, height: size }} aria-hidden />;
 }
 
-function CollectionDetail({ game, controller, onDeleted }: { game: GameState; controller: GameController; onDeleted: () => void }) {
+function displayName(g: GameState, number: number): string {
+  return g.name ?? `No.${number}`;
+}
+
+interface DetailProps {
+  game: GameState;
+  number: number;
+  controller: GameController;
+  onDeleted: () => void;
+  onRenamed: (g: GameState) => void;
+}
+
+function CollectionDetail({ game, number, controller, onDeleted, onRenamed }: DetailProps) {
   const [confirm, setConfirm] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const days = Math.floor((game.lastProcessedGrowthIndex * 3_600_000) / DAY_MS);
   return (
     <div className="collection-detail" data-testid="collection-detail">
+      {renaming ? (
+        <NameForm
+          initial={game.name ?? ''}
+          submitLabel="名前を保存"
+          onCancel={() => setRenaming(false)}
+          onSubmit={async (name) => {
+            const g = await controller.renameInCollection(game.gameId, name);
+            setRenaming(false);
+            onRenamed(g);
+          }}
+        />
+      ) : (
+        <div className="detail-title">
+          <h3 data-testid="detail-name">{displayName(game, number)}</h3>
+          <button className="text-btn" data-testid="rename" onClick={() => setRenaming(true)}>
+            名前を変える
+          </button>
+        </div>
+      )}
       <Thumb controller={controller} game={game} size={Math.min(340, (globalThis.innerWidth || 360) - 32)} />
       <dl className="detail-facts">
         <div>

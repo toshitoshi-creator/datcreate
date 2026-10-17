@@ -23,6 +23,8 @@ export interface GameState {
   keepGrowing?: boolean;
   /** Set when the creature was moved to the collection; it no longer grows. */
   archivedAt?: number;
+  /** Name given when it was put in the collection. Names may repeat; gameId identifies. */
+  name?: string;
 }
 
 /** Inputs that influenced a pixel, stored inline so a pixel's environment is reproducible. */

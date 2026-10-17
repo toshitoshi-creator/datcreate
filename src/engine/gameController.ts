@@ -1,4 +1,4 @@
-import { CLOCK_ROLLBACK_TOLERANCE_MS, COMPLETE_GROWTH_INDEX, CURRENT_GENERATOR_VERSION, SCHEMA_VERSION, WEATHER_VALID_MS } from '../core/constants';
+import { CLOCK_ROLLBACK_TOLERANCE_MS, COMPLETE_GROWTH_INDEX, CURRENT_GENERATOR_VERSION, NAME_MAX_LENGTH, SCHEMA_VERSION, WEATHER_VALID_MS } from '../core/constants';
 import { Simulation } from '../core/generator';
 import { detectMilestones, sortMilestones } from '../core/milestones';
 import { CREATURE_STYLES, type CreatureStyle } from '../core/genome';
@@ -72,6 +72,14 @@ export function browserLock(): LockFn {
   const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
   if (!locks?.request) return (fn) => fn();
   return (fn) => locks.request('dot-life-growth', fn) as ReturnType<typeof fn>;
+}
+
+/** Trim a name and check it; names may repeat. */
+export function normalizeName(name: string): string {
+  const clean = name.replace(/\s+/g, ' ').trim();
+  if (!clean) throw new Error('名前を入力してください');
+  if ([...clean].length > NAME_MAX_LENGTH) throw new Error(`名前は${NAME_MAX_LENGTH}文字までです`);
+  return clean;
 }
 
 /** Player choice -> concrete style. 'cute' / 'cool' sometimes grow into the matching ghost. */
@@ -457,10 +465,14 @@ export class GameController {
     await this.checkGrowth();
   }
 
-  /** Move the current creature to the collection (kept, no longer growing) and return to the start screen. */
-  async retireToCollection(): Promise<void> {
+  /**
+   * Move the current creature to the collection under `name` (kept, no longer
+   * growing) and return to the start screen. Names may repeat.
+   */
+  async retireToCollection(name: string): Promise<void> {
+    const clean = normalizeName(name);
     if (this.growing) await this.growing;
-    await this.lock(() => this.deps.repo.archiveActiveGame(this.deps.clock.now()));
+    await this.lock(() => this.deps.repo.archiveActiveGame(this.deps.clock.now(), clean));
     this.sim = null;
     this.pixels = [];
     this.achieved = new Set();
@@ -473,6 +485,16 @@ export class GameController {
 
   loadCollectionPixels(gameId: string): Promise<Pixel[]> {
     return this.deps.repo.loadPixels(gameId);
+  }
+
+  async renameInCollection(gameId: string, name: string): Promise<GameState> {
+    return this.deps.repo.renameArchivedGame(gameId, normalizeName(name));
+  }
+
+  /** Default name suggestion for the next collection entry. */
+  async suggestName(): Promise<string> {
+    const n = (await this.deps.repo.listArchivedGames()).length + 1;
+    return `ドット${n}号`;
   }
 
   deleteFromCollection(gameId: string): Promise<void> {

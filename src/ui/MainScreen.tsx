@@ -120,7 +120,8 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
       {state.completion === 'complete' && !hidden && (
         <CompletionDialog
           count={state.pixelCount}
-          onNew={() => controller.retireToCollection()}
+          suggestName={() => controller.suggestName()}
+          onSave={(name) => controller.retireToCollection(name)}
           onContinue={() => controller.continueGrowing()}
         />
       )}

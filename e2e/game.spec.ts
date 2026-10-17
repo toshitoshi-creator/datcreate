@@ -221,23 +221,42 @@ test('after 30 days a finished creature goes to the collection and a new one sta
   await jump(page, 30 * 24 * HOUR);
   await expect(page.getByTestId('completion-dialog')).toBeVisible();
   await page.getByTestId('start-new-creature').click();
+  await expect(page.getByTestId('name-input')).toHaveValue('ドット1号');
+  await page.getByTestId('name-input').fill('');
+  await page.getByTestId('name-submit').click();
+  await expect(page.getByTestId('name-error')).toContainText('名前を入力');
+  await page.getByTestId('name-input').fill('もちまる');
+  await page.screenshot({ path: 'test-results/shots/naming.png' });
+  await page.getByTestId('name-submit').click();
   await expect(page.getByTestId('start-button')).toBeVisible();
   await expect(page.getByTestId('start-open-collection')).toHaveText('図鑑を見る（1）');
   await page.getByTestId('style-random').click();
   await page.getByTestId('start-button').click();
   await expect(count(page)).toHaveText('1');
-  await jump(page, 5 * HOUR);
-  await expect(count(page)).toHaveText('6');
+
+  // a second creature may share the same name
+  await jump(page, 30 * 24 * HOUR);
+  await page.getByTestId('start-new-creature').click();
+  await page.getByTestId('name-input').fill('もちまる');
+  await page.getByTestId('name-submit').click();
+  await page.getByTestId('start-button').click();
+  await expect(count(page)).toHaveText('1');
+
   await page.getByTestId('open-collection').click();
-  await expect(page.getByTestId('collection-item')).toHaveCount(1);
-  await expect(page.getByTestId('collection-item')).toContainText('721 dots');
+  await expect(page.getByTestId('collection-item')).toHaveCount(2);
+  await expect(page.getByTestId('collection-name')).toHaveText(['もちまる', 'もちまる']);
+  await expect(page.getByTestId('collection-item').first()).toContainText('721 dots');
   await page.waitForTimeout(500);
   await page.screenshot({ path: 'test-results/shots/collection.png' });
-  await page.getByTestId('collection-item').click();
+  await page.getByTestId('collection-item').last().click();
   await expect(page.getByTestId('collection-detail')).toContainText('721');
+  await page.getByTestId('rename').click();
+  await page.getByTestId('name-input').fill('もちまる初代');
+  await page.getByTestId('name-submit').click();
+  await expect(page.getByTestId('detail-name')).toHaveText('もちまる初代');
   await page.reload();
   await page.getByTestId('open-collection').click();
-  await expect(page.getByTestId('collection-item')).toHaveCount(1);
+  await expect(page.getByTestId('collection-name')).toHaveText(['もちまる', 'もちまる初代']);
 });
 
 test('production build exposes no time-travel controls', async ({ page }) => {

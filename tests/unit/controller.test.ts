@@ -347,7 +347,7 @@ describe('GameController: completion & collection', () => {
     await h.controller.checkGrowth();
     const finished = fingerprint(h.controller.pixels);
     const oldId = h.controller.getState().game!.gameId;
-    await h.controller.retireToCollection();
+    await h.controller.retireToCollection('  ぷに  ');
     expect(h.controller.getState().status).toBe('no-game');
 
     clock.advance(10 * DAY_MS); // time passes: the archived creature must not grow
@@ -356,6 +356,7 @@ describe('GameController: completion & collection', () => {
     const list = await h.controller.listCollection();
     expect(list.map((g) => g.gameId)).toEqual([oldId]);
     expect(list[0].lastProcessedGrowthIndex).toBe(720);
+    expect(list[0].name).toBe('ぷに');
     expect(fingerprint(await h.controller.loadCollectionPixels(oldId))).toBe(finished);
 
     // survives restart, and resetting / importing the active game leaves the collection alone
@@ -383,7 +384,44 @@ describe('GameController: completion & collection', () => {
     await h.controller.checkGrowth();
     await h.controller.continueGrowing();
     expect(h.controller.getState().pixelCount).toBe(961);
-    await h.controller.retireToCollection();
+    await h.controller.retireToCollection('ながいき');
     expect((await h.controller.listCollection())[0].lastProcessedGrowthIndex).toBe(960);
+  });
+});
+
+describe('GameController: naming collection entries', () => {
+  it('names may repeat; each entry stays separate and can be renamed', async () => {
+    const clock = new FakeClock(T0);
+    const h = await makeHarness({ clock });
+    expect(await h.controller.suggestName()).toBe('ドット1号');
+    for (let i = 0; i < 2; i++) {
+      await h.controller.startNewGame('cute');
+      clock.advance(30 * DAY_MS);
+      await h.controller.checkGrowth();
+      await h.controller.retireToCollection('もち');
+      clock.advance(DAY_MS);
+    }
+    expect(await h.controller.suggestName()).toBe('ドット3号');
+    const list = await h.controller.listCollection();
+    expect(list).toHaveLength(2);
+    expect(list.map((g) => g.name)).toEqual(['もち', 'もち']);
+    expect(new Set(list.map((g) => g.gameId)).size).toBe(2);
+
+    const renamed = await h.controller.renameInCollection(list[1].gameId, 'もち（初代）');
+    expect(renamed.name).toBe('もち（初代）');
+    const again = await h.controller.listCollection();
+    expect(again.find((g) => g.gameId === list[0].gameId)?.name).toBe('もち');
+    expect(again.find((g) => g.gameId === list[1].gameId)?.name).toBe('もち（初代）');
+  });
+
+  it('rejects empty or too-long names without archiving anything', async () => {
+    const h = await makeHarness({ clock: new FakeClock(T0) });
+    await h.controller.startNewGame();
+    await expect(h.controller.retireToCollection('   ')).rejects.toThrow('名前を入力');
+    await expect(h.controller.retireToCollection('あ'.repeat(21))).rejects.toThrow('20文字');
+    expect(h.controller.getState().status).toBe('ready');
+    expect(await h.controller.listCollection()).toEqual([]);
+    await h.controller.retireToCollection('あ'.repeat(20));
+    expect((await h.controller.listCollection())[0].name).toBe('あ'.repeat(20));
   });
 });

@@ -70,6 +70,7 @@ export function validateSave(input: unknown): ValidationResult {
   if (!isInt(g.initialSeed) || (g.initialSeed as number) < 0 || (g.initialSeed as number) > 0xffffffff) errors.push('game.initialSeed が不正です');
   if (!isInt(g.generatorVersion) || !isSupportedGenerator(g.generatorVersion as number)) errors.push('未対応の generatorVersion です');
   if (g.style !== undefined && !CREATURE_STYLES.includes(g.style as CreatureStyle)) errors.push('game.style が不正です');
+  if (g.name !== undefined && (typeof g.name !== 'string' || g.name.length > 100)) errors.push('game.name が不正です');
   if (errors.length) return { ok: false, errors };
 
   const pixels = raw.pixels;
@@ -118,6 +119,7 @@ export function validateSave(input: unknown): ValidationResult {
     lastObservedAt: isNum(g.lastObservedAt) ? (g.lastObservedAt as number) : (g.updatedAt as number),
     ...(g.style !== undefined ? { style: g.style as CreatureStyle } : {}),
     ...(g.keepGrowing === true ? { keepGrowing: true } : {}),
+    ...(typeof g.name === 'string' ? { name: g.name } : {}),
   };
   return {
     ok: true,
