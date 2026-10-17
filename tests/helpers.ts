@@ -116,8 +116,13 @@ export function envAt(hour: number, weather: Weather = 'unknown', organicShapeBi
 }
 
 /** Grow an individual headlessly. */
-export function grow(seed: number, count: number, envFor: (i: number) => EnvUsed = (i) => envAt((9 + i) % 24)): { sim: Simulation; pixels: Pixel[] } {
-  const sim = new Simulation({ gameId: 'test', initialSeed: seed, generatorVersion: 1 });
+export function grow(
+  seed: number,
+  count: number,
+  envFor: (i: number) => EnvUsed = (i) => envAt((9 + i) % 24),
+  generatorVersion = 1,
+): { sim: Simulation; pixels: Pixel[] } {
+  const sim = new Simulation({ gameId: 'test', initialSeed: seed, generatorVersion });
   const pixels: Pixel[] = [];
   for (let i = 0; i < count; i++) {
     pixels.push(sim.generateNext({ createdAt: T0 + i * HOUR_MS, env: envFor(i), environmentSnapshotId: null }).pixel);

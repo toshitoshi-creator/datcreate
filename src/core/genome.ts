@@ -20,6 +20,8 @@ export interface LimbGene {
   length: number;
   wobble: number;
   kind: 'leg' | 'arm' | 'antenna' | 'tail';
+  /** Max thickness in cells (v2+); undefined = thin tendril. */
+  thickness?: number;
 }
 
 /** A soft ellipse of the body-plan field, in units of the growing body scale. */
@@ -74,11 +76,19 @@ export interface Genome {
   patternScale: number;
   patternStrength: number;
   colorSeed: number;
+  /** Faint blush accents under the eyes (v2+). */
+  hasCheeks: boolean;
+  cheekHue: number;
 }
 
 const DEG = Math.PI / 180;
 
 export function deriveGenome(initialSeed: number, generatorVersion: number): Genome {
+  const base = deriveBaseGenome(initialSeed, generatorVersion);
+  return generatorVersion >= 2 ? characterize(base, initialSeed, generatorVersion) : base;
+}
+
+function deriveBaseGenome(initialSeed: number, generatorVersion: number): Genome {
   const r = new Rng(hash32(initialSeed, 'genome', generatorVersion));
 
   const aspect = r.chance(0.3) ? r.range(0.65, 1.5) : r.range(0.85, 1.18);
@@ -214,5 +224,108 @@ export function deriveGenome(initialSeed: number, generatorVersion: number): Gen
     patternStrength: r.range(0.25, 0.65),
     colorSeed: hash32(initialSeed, 'colour', generatorVersion),
     replanChance: r.range(0.3, 0.9),
+    hasCheeks: false,
+    cheekHue: 0,
   };
+}
+
+/**
+ * v2: nudges the genome toward readable "character" silhouettes — compact
+ * bodies (often a head over a body), calmer colours, larger eyes and stubby
+ * limbs — while keeping variety and a share of abstract individuals. These are
+ * still only probabilities for future growth.
+ */
+function characterize(g: Genome, initialSeed: number, generatorVersion: number): Genome {
+  const r = new Rng(hash32(initialSeed, 'character', generatorVersion));
+  const out: Genome = { ...g };
+
+  // silhouette ------------------------------------------------------------
+  const plan = r.weighted([0.34, 0.36, 0.15, 0.08, 0.07]);
+  const tilt = r.chance(0.25) ? r.range(-0.2, 0.2) : 0;
+  const blobs: BlobGene[] = [];
+  if (plan === 0) {
+    const a = r.range(0.88, 1.25);
+    blobs.push({ ox: 0, oy: 0, rx: a, ry: 1 / a });
+  } else if (plan === 1) {
+    // big head, smaller body (chibi proportions)
+    const hr = r.range(0.85, 1.15);
+    blobs.push({ ox: 0, oy: 0, rx: hr * r.range(1, 1.2), ry: hr });
+    blobs.push({ ox: tilt, oy: r.range(1.0, 1.35), rx: r.range(0.55, 0.85), ry: r.range(0.5, 0.75) });
+  } else if (plan === 2) {
+    blobs.push({ ox: 0, oy: 0, rx: r.range(1.2, 1.5), ry: r.range(0.7, 0.9) });
+  } else if (plan === 3) {
+    blobs.push({ ox: 0, oy: 0, rx: r.range(0.8, 1.0), ry: r.range(0.8, 1.0) });
+    blobs.push({ ox: (r.chance(0.5) ? 1 : -1) * r.range(0.6, 0.9), oy: r.range(-0.4, 0.4), rx: r.range(0.4, 0.6), ry: r.range(0.4, 0.6) });
+  } else {
+    blobs.push({ ox: 0, oy: 0, rx: r.range(0.6, 0.8), ry: r.range(1.15, 1.45) });
+  }
+  out.blobs = blobs;
+  out.blobArea = blobs.reduce((s, b) => s + b.rx * b.ry, 0);
+  out.lobe = g.lobe * 0.45;
+  out.lobeScale = r.range(6, 11);
+  out.compactness = r.range(1.1, 1.8);
+  out.cohesion = r.range(0.9, 1.4);
+  out.scatter = r.chance(0.08) ? r.range(0.3, 0.6) : r.range(0, 0.08);
+  out.fill = r.range(0.8, 1.6);
+  out.momentum = r.range(0, 0.5);
+  out.symmetry = r.chance(0.15) ? r.range(0.1, 0.4) : r.range(0.7, 1.4);
+  out.temperature = r.range(0.55, 0.85);
+
+  // face --------------------------------------------------------------------
+  out.faceAffinity = r.chance(0.12) ? r.range(0, 0.08) : r.range(0.65, 1);
+  out.eyeStyle = r.chance(0.5) ? 'bright' : 'hollow';
+  const headTop = plan === 1; // face sits on the head blob, i.e. higher up
+  const eyeCount = [2, 1, 3][r.weighted([0.8, 0.12, 0.08])];
+  const sep = r.range(0.17, 0.27);
+  const baseY = headTop ? r.range(0.17, 0.27) : r.range(0.3, 0.42);
+  const size = r.range(0.13, 0.2);
+  const asym = r.chance(0.25) ? r.range(0.03, 0.08) : r.range(0, 0.015);
+  out.eyes = [];
+  if (eyeCount === 1) out.eyes.push({ dx: r.range(-0.05, 0.05), dy: baseY, size: size * r.range(1.3, 1.7) });
+  else {
+    for (let i = 0; i < eyeCount; i++) {
+      const t = i / (eyeCount - 1) - 0.5;
+      out.eyes.push({ dx: t * 2 * sep + r.range(-asym, asym), dy: baseY + (eyeCount === 3 && i === 1 ? -0.07 : 0) + r.range(-asym, asym), size: size * r.range(0.9, 1.1) });
+    }
+  }
+  out.hasMouth = r.chance(0.88);
+  out.mouthY = headTop ? r.range(0.4, 0.5) : r.range(0.6, 0.72);
+  out.mouthWidth = r.range(0.22, 0.42);
+  out.mouthCurve = r.chance(0.7) ? r.range(0.3, 1) : r.range(-0.8, 0.2);
+  out.mouthDx = r.range(-0.03, 0.03);
+  out.hasNose = r.chance(0.3);
+  out.hasCheeks = r.chance(0.4);
+  out.cheekHue = r.range(330, 375) % 360;
+  out.replanChance = r.range(0.65, 0.95);
+
+  // limbs: stubby, thicker, mostly legs ---------------------------------------
+  out.limbAffinity = r.chance(0.18) ? r.range(0, 0.05) : r.range(0.5, 1);
+  const limbs: LimbGene[] = [];
+  const lp = r.weighted([0.2, 0.36, 0.24, 0.1, 0.1]);
+  const pair = (kind: LimbGene['kind'], centre: number, spread: number, len: number, thick: number) => {
+    const j = r.range(0, 6);
+    for (const sgn of [-1, 1]) {
+      limbs.push({ kind, angle: (centre + sgn * spread + r.range(-j, j)) * DEG, length: len * r.range(0.9, 1.1), wobble: r.range(0, 0.15), thickness: thick });
+    }
+  };
+  const legThick = r.chance(0.6) ? 2 : 1;
+  if (lp === 1 || lp === 2 || lp === 4) pair('leg', 90, r.range(18, 34), r.range(0.4, 0.85), legThick);
+  if (lp === 2 || lp === 3) {
+    const droop = r.range(0, 35);
+    limbs.push({ kind: 'arm', angle: (180 - droop) * DEG, length: r.range(0.35, 0.75), wobble: r.range(0, 0.2), thickness: r.chance(0.4) ? 2 : 1 });
+    limbs.push({ kind: 'arm', angle: droop * DEG, length: limbs[limbs.length - 1].length, wobble: r.range(0, 0.2), thickness: limbs[limbs.length - 1].thickness });
+  }
+  if (lp === 4) pair('antenna', -90, r.range(12, 30), r.range(0.3, 0.6), 1);
+  if (r.chance(0.08)) limbs.push({ kind: 'tail', angle: (r.chance(0.5) ? r.range(120, 160) : r.range(20, 60)) * DEG, length: r.range(0.4, 0.9), wobble: r.range(0.1, 0.4), thickness: 1 });
+  out.limbs = limbs;
+
+  // colour: calmer, more coherent ------------------------------------------------
+  out.volatility = g.volatility * 0.35;
+  out.inheritance = r.range(0.9, 0.97);
+  out.pattern = (['patches', 'plain', 'rings', 'stripes-h', 'speckle'] as const)[r.weighted([0.34, 0.36, 0.1, 0.12, 0.08])];
+  out.patternScale = r.range(4, 9);
+  out.patternStrength = r.range(0.15, 0.4);
+  out.saturation = r.chance(0.12) ? r.range(0.15, 0.35) : r.range(0.45, 0.8);
+  out.lightness = r.range(0.5, 0.68);
+  return out;
 }

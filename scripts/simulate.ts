@@ -16,16 +16,16 @@ const cell = Number(process.env.CELL ?? 200);
 const rows = Math.ceil(count / cols);
 const W = cols * cell, H = rows * cell;
 const img = new Uint8Array(W * H * 3).fill(12);
-const weathers: Weather[] = ['clear', 'cloudy', 'rain', 'snow', 'unknown'];
+const weathers: Weather[] = ['clear', 'cloudy', 'rain', 'unknown', 'unknown', 'clear', 'cloudy', 'snow'];
 const t0 = Date.now();
 for (let i = 0; i < count; i++) {
   const seed = (seedOffset + i) * 2654435761 >>> 0;
-  const sim = new Simulation({ gameId: `g${i}`, initialSeed: seed, generatorVersion: 1 });
+  const sim = new Simulation({ gameId: `g${i}`, initialSeed: seed, generatorVersion: Number(process.env.VER ?? 1) });
   for (let k = 0; k < pixels; k++) {
     const hour = (9 + k) % 24;
     sim.generateNext({
       createdAt: k * 3600_000,
-      env: { timeOfDay: timeOfDayFromHour(hour), localHour: hour, weather: weathers[Math.floor(k / 30) % weathers.length], environmentInfluence: 0.6, organicShapeBias: 0.6 },
+      env: { timeOfDay: timeOfDayFromHour(hour), localHour: hour, weather: weathers[(Math.floor(k / 18) * 7 + i) % weathers.length], environmentInfluence: 0.6, organicShapeBias: 0.6 },
       environmentSnapshotId: null,
     });
   }
@@ -54,6 +54,6 @@ for (let i = 0; i < count; i++) {
 import { hslToHex } from '../src/core/color';
 function hexFromCell(h: number, s: number, l: number) { return hslToHex({ h, s, l }); }
 mkdirSync('scripts/out', { recursive: true });
-const file = `scripts/out/sheet-${pixels}-${seedOffset}.png`;
+const file = `scripts/out/sheet-v${process.env.VER ?? 1}-${pixels}-${seedOffset}.png`;
 writeFileSync(file, encodePng(W, H, img));
 console.log('wrote', file, `${Date.now() - t0}ms`);

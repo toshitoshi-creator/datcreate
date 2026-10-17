@@ -1,6 +1,5 @@
 import {
   FACE_PLAN_MAX_EPOCH,
-  FACE_PLAN_MIN_EPOCH,
   FACE_REPLAN_MAX_EPOCH,
   analyzeShape,
   buildFacePlan,
@@ -18,6 +17,7 @@ import { deriveGenome, type Genome } from './genome';
 import { GrowthModel, N8, cellKey, keyToXY, type CellInfo } from './model';
 import { noise2 } from './noise';
 import { Rng, hash32 } from './rng';
+import { tuningFor, type Tuning } from './tuning';
 import type { EnvUsed, GameState, Pixel } from './types';
 
 export interface SlotInput {
@@ -32,6 +32,7 @@ export type GameIdentity = Pick<GameState, 'gameId' | 'initialSeed' | 'generator
 
 interface GeneratorContext {
   game: GameIdentity;
+  tuning: Tuning;
   genome: Genome;
   model: GrowthModel;
   analysis: ShapeAnalysis | null;
@@ -42,10 +43,11 @@ export const pixelSeed = (initialSeed: number, growthIndex: number, generatorVer
   hash32(initialSeed, growthIndex, generatorVersion);
 
 function makePixel(ctx: GeneratorContext, x: number, y: number, parent: CellInfo | null, rng: Rng, seed: number): Pixel {
-  const { game, genome, model, analysis, slot } = ctx;
+  const { game, genome, model, analysis, slot, tuning } = ctx;
   const k = cellKey(x, y);
   const face = analysis?.face ?? null;
-  const hsl = generateColor(rng, model, x, y, genome, slot.env, face?.accent.get(k), face?.strength ?? 0);
+  const inFace = !!face && x >= face.box.x0 && x <= face.box.x1 && y >= face.box.y0 && y <= face.box.y1;
+  const hsl = generateColor(rng, model, x, y, genome, slot.env, face?.accent.get(k), face?.strength ?? 0, tuning, inFace);
   return {
     id: `${game.gameId}:${slot.growthIndex}`,
     gameId: game.gameId,
@@ -57,7 +59,7 @@ function makePixel(ctx: GeneratorContext, x: number, y: number, parent: CellInfo
     parentId: parent ? parent.id : null,
     seed,
     environmentSnapshotId: slot.environmentSnapshotId,
-    generatorVersion: 1,
+    generatorVersion: game.generatorVersion,
     envUsed: slot.env,
   };
 }
@@ -69,10 +71,13 @@ interface Cand {
   parent: CellInfo;
 }
 
-/** Generator v1. Pure: same (game, pixels so far, slot) => same pixel. */
-function generateV1(ctx: GeneratorContext): Pixel {
-  const { game, genome, model, analysis, slot } = ctx;
-  const seed = pixelSeed(game.initialSeed, slot.growthIndex, 1);
+/**
+ * The growth step. Pure: same (game, pixels so far, slot) => same pixel.
+ * Version differences live entirely in the Tuning table and the genome.
+ */
+function generate(ctx: GeneratorContext): Pixel {
+  const { game, genome, model, analysis, slot, tuning: t } = ctx;
+  const seed = pixelSeed(game.initialSeed, slot.growthIndex, game.generatorVersion);
   const rng = new Rng(seed);
   const n = model.size;
   if (n === 0) return makePixel(ctx, 0, 0, null, rng, seed);
@@ -117,9 +122,10 @@ function generateV1(ctx: GeneratorContext): Pixel {
   // 1. Choose origin: a limb tip (weak bias) or an existing dot -----------
   let limbTip: CellInfo | null = null;
   let limbDirX = 0, limbDirY = 0;
+  let limbThick = 1;
   const limbRoll = rng.next();
   if (analysis && analysis.limbs.length && ob > 0) {
-    const p = ob * genome.limbAffinity * smoothstep(60, 400, n) * 0.45;
+    const p = ob * genome.limbAffinity * smoothstep(60, 400, n) * t.limbChance;
     const needy = analysis.limbs.filter((l) => l.protrusion < l.target);
     if (limbRoll < p && needy.length) {
       const limb = needy[rng.int(needy.length)];
@@ -138,7 +144,10 @@ function generateV1(ctx: GeneratorContext): Pixel {
         limbDirX = Math.cos(a);
         limbDirY = Math.sin(a);
         for (const [dx, dy] of N8) consider(tip.x + dx, tip.y + dy, tip);
-        if (cands.length) limbTip = tip;
+        if (cands.length) {
+          limbTip = tip;
+          limbThick = Math.min(t.limbThicknessMax, limb.gene.thickness ?? 1);
+        }
       }
     }
   }
@@ -169,8 +178,13 @@ function generateV1(ctx: GeneratorContext): Pixel {
     if (limbTip) {
       const vx = c.x - limbTip.x, vy = c.y - limbTip.y;
       const len = Math.hypot(vx, vy) || 1;
-      s = 2.6 * ((vx * limbDirX + vy * limbDirY) / len) - 0.9 * Math.max(0, n8 - 1)
-        + 0.4 * noise2(genome.noiseSeed, c.x, c.y, genome.lobeScale);
+      // thick limbs tolerate more neighbours, so the line grows two cells wide
+      const align = (vx * limbDirX + vy * limbDirY) / len;
+      s = limbThick >= 2
+        // thick limbs: weaker pull forward, reward filling in beside the line
+        ? 1.6 * align - 0.9 * Math.max(0, n8 - 4) + (n4 >= 2 ? 0.9 : 0)
+        : 2.6 * align - 0.9 * Math.max(0, n8 - 1);
+      s += 0.4 * noise2(genome.noiseSeed, c.x, c.y, genome.lobeScale);
     } else {
       const dx = c.x - cx, dy = c.y - cy;
       const dist = Math.hypot(dx, dy) || 1;
@@ -192,10 +206,10 @@ function generateV1(ctx: GeneratorContext): Pixel {
       if (h) {
         // Discourage (never forbid) filling facial gaps: damp attraction, then penalise.
         const b = ob * h;
-        s = s * (1 - Math.min(0.95, b * 1.5)) - b * 14;
+        s = s * (1 - Math.min(0.95, b * t.hollowDamp)) - b * t.hollowPenalty;
       }
       const a = face.accent.get(c.k);
-      if (a === 'eye') s += ob * face.strength * 1.2;
+      if (a === 'eye') s += ob * face.strength * t.eyeBonus;
       else if (a === 'nose') s += ob * face.strength * 0.8;
     }
     s += rng.next() * 0.05;
@@ -216,7 +230,7 @@ type GeneratorFn = (ctx: GeneratorContext) => Pixel;
  * Registry of generator versions. Existing pixels are never regenerated; a
  * future version only applies to games whose generatorVersion selects it.
  */
-export const GENERATORS: Record<number, GeneratorFn> = { 1: generateV1 };
+export const GENERATORS: Record<number, GeneratorFn> = { 1: generate, 2: generate };
 
 export function isSupportedGenerator(version: number): boolean {
   return Object.prototype.hasOwnProperty.call(GENERATORS, version);
@@ -229,6 +243,7 @@ export function isSupportedGenerator(version: number): boolean {
 export class Simulation {
   readonly model: GrowthModel;
   readonly genome: Genome;
+  readonly tuning: Tuning;
   private analysis: ShapeAnalysis | null = null;
   private analysisEpoch = -1;
   /** Facial tendency plans decided so far (oldest first). */
@@ -242,6 +257,7 @@ export class Simulation {
       throw new Error(`Unsupported generator version ${game.generatorVersion}`);
     }
     this.genome = deriveGenome(game.initialSeed, game.generatorVersion);
+    this.tuning = tuningFor(game.generatorVersion);
     this.model = GrowthModel.fromPixels(pixels);
     // Re-derive face plans exactly as they were decided during growth.
     for (let e = nextEpochAfter(0); e < this.model.size && !this.facePlanDone; e = nextEpochAfter(e)) {
@@ -259,7 +275,7 @@ export class Simulation {
 
   private needsPlanAttempt(epoch: number): boolean {
     if (this.facePlanDone || epoch <= this.facePlanCheckedEpoch) return false;
-    return this.facePlans.length === 0 ? epoch >= FACE_PLAN_MIN_EPOCH : epoch >= this.nextReplanAt;
+    return this.facePlans.length === 0 ? epoch >= this.tuning.facePlanMinEpoch : epoch >= this.nextReplanAt;
   }
 
   private considerFacePlan(epoch: number, a: ShapeAnalysis) {
@@ -275,18 +291,18 @@ export class Simulation {
     };
     if (this.facePlans.length === 0) {
       if (epoch > FACE_PLAN_MAX_EPOCH) { this.facePlanDone = true; return; }
-      if (!canPlanFace(a, this.genome)) return;
-      this.facePlans.push(buildFacePlan(a, this.genome, epoch, occupiedBefore));
-      this.nextReplanAt = epoch * 4;
+      if (!canPlanFace(a, this.genome, this.tuning)) return;
+      this.facePlans.push(buildFacePlan(a, this.genome, epoch, occupiedBefore, this.tuning));
+      this.nextReplanAt = epoch * this.tuning.replanFactor;
       return;
     }
     if (epoch > FACE_REPLAN_MAX_EPOCH) { this.facePlanDone = true; return; }
     const roll = hash32(this.game.initialSeed, 'replan', epoch) / 4294967296;
-    if (roll < this.genome.replanChance && canPlanFace(a, this.genome)) {
-      this.facePlans.push(buildFacePlan(a, this.genome, epoch, occupiedBefore));
-      this.nextReplanAt = epoch * 4;
+    if (roll < this.genome.replanChance && canPlanFace(a, this.genome, this.tuning)) {
+      this.facePlans.push(buildFacePlan(a, this.genome, epoch, occupiedBefore, this.tuning));
+      this.nextReplanAt = epoch * this.tuning.replanFactor;
     } else {
-      this.nextReplanAt = epoch * 2;
+      this.nextReplanAt = Math.ceil(epoch * this.tuning.replanRetryFactor);
     }
   }
 
@@ -296,7 +312,7 @@ export class Simulation {
     if (epoch < 8 || epoch > this.model.size) return { analysis: null, fresh: false };
     if (epoch === this.analysisEpoch) return { analysis: this.analysis, fresh: false };
     if (this.needsPlanAttempt(epoch)) this.considerFacePlan(epoch, analyzeShape(this.model.list, epoch, this.genome));
-    this.analysis = analyzeShape(this.model.list, epoch, this.genome, this.facePlans);
+    this.analysis = analyzeShape(this.model.list, epoch, this.genome, this.facePlans, this.tuning);
     this.analysisEpoch = epoch;
     return { analysis: this.analysis, fresh: true };
   }
@@ -304,7 +320,7 @@ export class Simulation {
   /** Analysis of the whole current body (for UI / tooling; not used for generation). */
   currentAnalysis(): ShapeAnalysis | null {
     if (this.model.size < 8) return null;
-    return analyzeShape(this.model.list, this.model.size, this.genome, this.facePlans);
+    return analyzeShape(this.model.list, this.model.size, this.genome, this.facePlans, this.tuning);
   }
 
   generateNext(slot: Omit<SlotInput, 'growthIndex'>): { pixel: Pixel; analysis: ShapeAnalysis | null; freshAnalysis: boolean } {
@@ -312,6 +328,7 @@ export class Simulation {
     const { analysis, fresh } = this.analysisFor(growthIndex);
     const pixel = GENERATORS[this.game.generatorVersion]({
       game: this.game,
+      tuning: this.tuning,
       genome: this.genome,
       model: this.model,
       analysis,

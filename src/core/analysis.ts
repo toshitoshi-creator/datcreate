@@ -1,5 +1,6 @@
 import type { Genome, LimbGene } from './genome';
 import { cellKey, type CellInfo } from './model';
+import { TUNINGS, type Tuning } from './tuning';
 
 export interface Hole {
   cx: number;
@@ -11,7 +12,7 @@ export interface Hole {
   keys: number[];
 }
 
-export type AccentKind = 'eye' | 'eyeRim' | 'nose';
+export type AccentKind = 'eye' | 'eyeRim' | 'nose' | 'cheek';
 
 /**
  * Weak tendencies for future placement. These are *not* parts: nothing is
@@ -27,6 +28,8 @@ export interface FaceZones {
   eyesFromHoles: number;
   mouthFromHole: boolean;
   hasNose: boolean;
+  /** Rough box around the facial features (for calmer face colouring). */
+  box: { x0: number; x1: number; y0: number; y1: number };
 }
 
 /**
@@ -41,18 +44,17 @@ export interface FacePlan {
   nose: { x: number; y: number } | null;
 }
 
-export const FACE_PLAN_MIN_EPOCH = 48;
 export const FACE_PLAN_MAX_EPOCH = 700;
 /** Later re-plans (larger features) are only attempted below this size. */
 export const FACE_REPLAN_MAX_EPOCH = 60_000;
 
-export function canPlanFace(a: ShapeAnalysis, genome: Genome): boolean {
+export function canPlanFace(a: ShapeAnalysis, genome: Genome, t: Tuning = TUNINGS[1]): boolean {
   return (
     genome.faceAffinity >= 0.1 &&
-    a.mainSize >= 60 &&
-    a.core.w >= 7 &&
-    a.core.h >= 7 &&
-    a.fillRatio >= 0.45
+    a.mainSize >= t.faceMinMain &&
+    a.core.w >= t.faceMinCore &&
+    a.core.h >= t.faceMinCore &&
+    a.fillRatio >= t.faceMinFill
   );
 }
 
@@ -61,6 +63,7 @@ export function buildFacePlan(
   genome: Genome,
   epoch: number,
   occupied: (x: number, y: number) => boolean,
+  t: Tuning = TUNINGS[1],
 ): FacePlan {
   const { core } = a;
   const nearestEmpty = (tx: number, ty: number): [number, number] => {
@@ -82,8 +85,8 @@ export function buildFacePlan(
     return [rx, ry];
   };
   const eyes = genome.eyes.map((e) => {
-    const [x, y] = nearestEmpty(core.cx + e.dx * core.w * 1.15, core.y0 + e.dy * core.h * 0.8);
-    return { x, y, r: Math.max(0.6, Math.min(3.5, Math.min(core.w, core.h) * e.size)) };
+    const [x, y] = nearestEmpty(core.cx + e.dx * core.w * t.eyeXScale, core.y0 + e.dy * core.h * t.eyeYScale);
+    return { x, y, r: Math.max(t.eyeRadiusMin, Math.min(t.eyeRadiusMax, Math.min(core.w, core.h) * e.size)) };
   });
   const mouth: [number, number][] = [];
   if (genome.hasMouth) {
@@ -118,6 +121,7 @@ function buildFaceZones(
   mainSize: number,
   holes: Hole[],
   occupied: (x: number, y: number) => boolean,
+  t: Tuning,
 ): FaceZones {
   const latest = plans[plans.length - 1];
   const strength = genome.faceAffinity * (0.6 + 0.4 * smoothstep(latest.epoch, latest.epoch * 3, mainSize));
@@ -131,17 +135,29 @@ function buildFaceZones(
   let eyeCount = 0;
   let mouthFromHole = false;
   let hasNose = false;
+  let bx0 = Infinity, bx1 = -Infinity, by0 = Infinity, by1 = -Infinity;
+  const grow = (x: number, y: number, r: number) => {
+    bx0 = Math.min(bx0, x - r); bx1 = Math.max(bx1, x + r); by0 = Math.min(by0, y - r); by1 = Math.max(by1, y + r);
+  };
+  const pupilEyes = genome.eyeStyle === 'bright' && t.brightPupil;
   // Older plans keep a weaker tendency; the newest one overrides overlaps.
   plans.forEach((plan, i) => {
     const st = i === plans.length - 1 ? strength : strength * 0.6;
     eyeCount += plan.eyes.length;
     for (const e of plan.eyes) {
       const R = Math.ceil(e.r + 1.5);
+      grow(e.x, e.y, e.r + 2);
+      const pupil = Math.max(0.5, e.r * 0.45);
       for (let gy = e.y - R; gy <= e.y + R; gy++) {
         for (let gx = e.x - R; gx <= e.x + R; gx++) {
           const d = Math.hypot(gx - e.x, gy - e.y);
           const k = cellKey(gx, gy);
-          if (d <= e.r) {
+          if (pupilEyes) {
+            // bright sclera around a small dark (empty) pupil
+            if (d <= pupil) { hollow.set(k, st); accent.delete(k); }
+            else if (d <= e.r + 0.7) { accent.set(k, 'eye'); hollow.delete(k); }
+            else if (d <= e.r + 1.6 && !hollow.has(k) && !accent.has(k)) accent.set(k, 'eyeRim');
+          } else if (d <= e.r) {
             if (genome.eyeStyle === 'hollow') { hollow.set(k, st); accent.delete(k); }
             else { accent.set(k, 'eye'); hollow.delete(k); }
           } else if (d <= e.r + 1.3 && !hollow.has(k) && !accent.has(k)) {
@@ -152,13 +168,27 @@ function buildFaceZones(
       if (genome.eyeStyle === 'hollow' && !occupied(e.x, e.y)) {
         const h = holeOf(e.x, e.y);
         if (h && h.size <= 60) eyesFromHoles++;
+      } else if (pupilEyes) {
+        let ring = 0;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) if (occupied(e.x + dx, e.y + dy)) ring++;
+        if (!occupied(e.x, e.y) && ring >= 3) eyesFromHoles++;
       } else if (genome.eyeStyle === 'bright' && occupied(e.x, e.y)) {
         eyesFromHoles++;
+      }
+      if (t.cheeks && genome.hasCheeks && plan.eyes.length >= 2) {
+        const side = e.x < plan.eyes.reduce((sum, q) => sum + q.x, 0) / plan.eyes.length ? -1 : 1;
+        const cx = Math.round(e.x + side * Math.max(1, e.r * 0.6));
+        const cy = Math.round(e.y + e.r + 2);
+        for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0]] as const) {
+          const k = cellKey(cx + dx, cy + dy);
+          if (!hollow.has(k) && !accent.has(k)) accent.set(k, 'cheek');
+        }
       }
     }
     if (plan.mouth.length) {
       let enclosed = 0;
       for (const [x, y] of plan.mouth) {
+        grow(x, y, 1);
         const k = cellKey(x, y);
         hollow.set(k, st * 0.9);
         accent.delete(k);
@@ -174,7 +204,7 @@ function buildFaceZones(
       }
     }
   });
-  return { strength, hollow, accent, eyeCount, eyesFromHoles, mouthFromHole, hasNose };
+  return { strength, hollow, accent, eyeCount, eyesFromHoles, mouthFromHole, hasNose, box: { x0: bx0, x1: bx1, y0: by0, y1: by1 } };
 }
 
 export interface LimbState {
@@ -224,6 +254,7 @@ export function analyzeShape(
   count: number,
   genome: Genome,
   plans: readonly FacePlan[] = [],
+  tuning: Tuning = TUNINGS[1],
 ): ShapeAnalysis {
   const n = Math.min(count, cells.length);
   let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
@@ -426,7 +457,8 @@ export function analyzeShape(
     if (c.x >= x0 && c.x <= x1 && c.y >= y0 && c.y <= y1) coreCount++;
   }
   const fillRatio = coreCount / (core.w * core.h);
-  const face = plans.length ? buildFaceZones(plans, genome, mainSize, holes, (x, y) => at(x, y)) : null;
+  const activePlans = tuning.keepOldPlans ? plans : plans.slice(-1);
+  const face = activePlans.length ? buildFaceZones(activePlans, genome, mainSize, holes, (x, y) => at(x, y), tuning) : null;
   return {
     analyzedCount: n,
     bbox: { minX, maxX, minY, maxY },

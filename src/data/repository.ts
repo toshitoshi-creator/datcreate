@@ -1,4 +1,5 @@
 import { SAVE_FORMAT, SCHEMA_VERSION } from '../core/constants';
+import { sortMilestones } from '../core/milestones';
 import type { EnvironmentLog, GameState, Milestone, Pixel } from '../core/types';
 import { STORES, openDatabase, reqToPromise, txDone } from './db';
 import { validateSave, type SaveFile } from './saveFile';
@@ -154,7 +155,7 @@ export class GameRepository {
   async loadMilestones(gameId: string): Promise<Milestone[]> {
     const tx = this.tx([STORES.milestones]);
     const all = (await reqToPromise(tx.objectStore(STORES.milestones).index('byGame').getAll(gameId))) as Milestone[];
-    return all.sort((a, b) => a.achievedAt - b.achievedAt || a.metadata.growthIndex - b.metadata.growthIndex);
+    return sortMilestones(all);
   }
 
   async putEnvironmentLog(log: EnvironmentLog): Promise<void> {

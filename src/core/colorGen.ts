@@ -4,6 +4,7 @@ import type { Genome } from './genome';
 import { N8, type GrowthModel } from './model';
 import type { Rng } from './rng';
 import { noise2 } from './noise';
+import type { Tuning } from './tuning';
 import type { EnvUsed } from './types';
 
 /** Circular mean colour of occupied 8-neighbours (or null). */
@@ -54,17 +55,22 @@ export function generateColor(
   env: EnvUsed,
   accent: AccentKind | undefined,
   faceStrength: number,
+  tune: Tuning,
+  inFace: boolean,
 ): Hsl {
   const w = env.environmentInfluence;
+  // shifts of individual dots; v2 keeps faces readable by calming the face area
+  const wc = w * tune.envColorChance * (inFace ? 1 - tune.faceColorCalm : 1);
   const target = patternTarget(genome, x, y, rng);
   const nb = neighbourColor(model, x, y);
   let c: Hsl;
   if (nb && rng.chance(genome.inheritance)) {
-    const t = genome.patternStrength;
+    const ps = genome.patternStrength * (inFace ? 1 - tune.faceColorCalm : 1);
+    const jitter = inFace ? 1 - tune.faceColorCalm * 0.7 : 1;
     c = {
-      h: pullHue(nb.h, target.h, t) + rng.gauss() * 4,
-      s: nb.s + (target.s - nb.s) * t + rng.gauss() * 0.03,
-      l: nb.l + (target.l - nb.l) * t + rng.gauss() * 0.03,
+      h: pullHue(nb.h, target.h, ps) + rng.gauss() * 4 * jitter,
+      s: nb.s + (target.s - nb.s) * ps + rng.gauss() * 0.03 * jitter,
+      l: nb.l + (target.l - nb.l) * ps + rng.gauss() * 0.03 * jitter,
     };
   } else {
     c = { h: target.h + rng.gauss() * 8, s: target.s + rng.gauss() * 0.06, l: target.l + rng.gauss() * 0.05 };
@@ -75,17 +81,17 @@ export function generateColor(
   const t = rng.next();
   switch (env.timeOfDay) {
     case 'morning':
-      if (t < 0.45 * w) { c.l += 0.07; c.s -= 0.07; }
+      if (t < 0.45 * wc) { c.l += 0.07; c.s -= 0.07; }
       break;
     case 'day':
-      if (t < 0.45 * w) { c.s += 0.09; c.l += 0.02; }
+      if (t < 0.45 * wc) { c.s += 0.09; c.l += 0.02; }
       break;
     case 'evening':
-      if (t < 0.45 * w) c.h = pullHue(c.h, rng.range(5, 40), rng.range(0.15, 0.45));
+      if (t < 0.45 * wc) c.h = pullHue(c.h, rng.range(5, 40), rng.range(0.15, 0.45));
       break;
     case 'night':
-      if (t < 0.45 * w) { c.l -= 0.1; c.s -= 0.03; }
-      if (rng.chance(0.05 * w)) { c.l = rng.range(0.75, 0.9); c.s = rng.range(0.6, 1); }
+      if (t < 0.45 * wc) { c.l -= 0.1; c.s -= 0.03; }
+      if (rng.chance(0.05 * w * tune.sparkScale)) { c.l = rng.range(0.75, 0.9); c.s = rng.range(0.6, 1); }
       break;
   }
 
@@ -93,36 +99,42 @@ export function generateColor(
   const u = rng.next();
   switch (env.weather) {
     case 'clear':
-      if (u < 0.45 * w) { c.h = pullHue(c.h, 45, rng.range(0.1, 0.35)); c.l += 0.04; }
+      if (u < 0.45 * wc) { c.h = pullHue(c.h, 45, rng.range(0.1, 0.35)); c.l += 0.04; }
       break;
     case 'cloudy':
-      if (u < 0.55 * w) c.s *= 0.7;
+      if (u < 0.55 * wc) c.s *= 0.7;
       break;
     case 'rain':
-      if (u < 0.4 * w) c.h = pullHue(c.h, rng.range(195, 235), rng.range(0.25, 0.6));
+      if (u < 0.4 * wc) c.h = pullHue(c.h, rng.range(195, 235), rng.range(0.25, 0.6));
       break;
     case 'storm':
-      if (u < 0.35 * w) c.h = pullHue(c.h, rng.range(230, 280), rng.range(0.25, 0.6));
-      if (rng.chance(0.04 * w)) { c.l = 0.88; c.s = 0.4; }
+      if (u < 0.35 * wc) c.h = pullHue(c.h, rng.range(230, 280), rng.range(0.25, 0.6));
+      if (rng.chance(0.04 * w * tune.sparkScale)) { c.l = 0.88; c.s = 0.4; }
       break;
     case 'snow':
-      if (u < 0.4 * w) { c.s *= 0.4; c.l = Math.max(c.l, rng.range(0.78, 0.9)); }
+      if (u < 0.4 * wc) { c.s *= 0.4; c.l = Math.max(c.l, rng.range(0.78, 0.9)); }
       break;
     case 'fog':
-      if (u < 0.5 * w) { c.s *= 0.6; c.l += 0.05; }
+      if (u < 0.5 * wc) { c.s *= 0.6; c.l += 0.05; }
       break;
     case 'unknown':
       break;
   }
 
   // weak facial colour accents (probabilistic) ----------------------------
-  if (accent && rng.chance(0.3 + 0.7 * faceStrength * env.organicShapeBias)) {
-    if (accent === 'eye') {
+  if (accent && rng.chance(tune.accentBase + tune.accentGain * faceStrength * env.organicShapeBias)) {
+    if (accent === 'eye' && tune.crispEyes) {
+      c = { h: c.h, s: rng.range(0.04, 0.14), l: rng.range(0.88, 0.96) };
+    } else if (accent === 'eyeRim' && tune.crispEyes) {
+      c.l -= rng.range(0.06, 0.14);
+    } else if (accent === 'eye') {
       c = rng.chance(0.6)
         ? { h: c.h, s: rng.range(0.05, 0.3), l: rng.range(0.85, 0.96) }
         : { h: c.h + 180 + rng.gauss() * 20, s: rng.range(0.7, 1), l: rng.range(0.6, 0.75) };
     } else if (accent === 'eyeRim') {
       if (rng.chance(0.5)) c.l = c.l > 0.5 ? c.l + 0.12 : c.l - 0.1;
+    } else if (accent === 'cheek') {
+      c = { h: genome.cheekHue + rng.gauss() * 8, s: rng.range(0.55, 0.8), l: Math.max(c.l, rng.range(0.62, 0.72)) };
     } else if (accent === 'nose') {
       c.h += 30 * rng.range(0.5, 1.2);
       c.l -= 0.08;

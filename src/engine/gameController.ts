@@ -1,6 +1,6 @@
 import { CLOCK_ROLLBACK_TOLERANCE_MS, CURRENT_GENERATOR_VERSION, SCHEMA_VERSION, WEATHER_VALID_MS } from '../core/constants';
 import { Simulation } from '../core/generator';
-import { detectMilestones } from '../core/milestones';
+import { detectMilestones, sortMilestones } from '../core/milestones';
 import { freshSeed } from '../core/rng';
 import { dueGrowthIndex, growthTime, timeOfDayFromHour } from '../core/time';
 import type { EnvUsed, EnvironmentLog, FetchStatus, GameState, Milestone, Pixel } from '../core/types';
@@ -226,7 +226,7 @@ export class GameController {
         if (!this.achieved.has(m.id)) {
           this.achieved.add(m.id);
           await this.deps.repo.putMilestone(m);
-          this.setState({ milestones: [...this.state.milestones, m] });
+          this.setState({ milestones: sortMilestones([...this.state.milestones, m]) });
         }
         this.setState({ clockWarning: true });
       }
@@ -262,7 +262,7 @@ export class GameController {
         this.setState({
           game,
           pixelCount: this.pixels.length,
-          milestones: milestones.length ? [...this.state.milestones, ...milestones] : this.state.milestones,
+          milestones: milestones.length ? sortMilestones([...this.state.milestones, ...milestones]) : this.state.milestones,
           catchUp: isCatchUp ? { done: added, total } : null,
         });
         this.emitPixels(pixels, isCatchUp ? 'catchup' : 'growth');

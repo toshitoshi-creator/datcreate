@@ -69,3 +69,8 @@ export function detectMilestones(
   }
   return out;
 }
+
+/** Canonical history order (same in memory and after reload). */
+export function sortMilestones(ms: Milestone[]): Milestone[] {
+  return ms.sort((a, b) => a.achievedAt - b.achievedAt || a.metadata.growthIndex - b.metadata.growthIndex || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
