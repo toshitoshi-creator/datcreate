@@ -8,6 +8,8 @@ import { BOOST_RATE, activeBoost, dueIndexAt, effectiveTime, pendingBoostMs, slo
 import { AD_DAILY_LIMIT, AD_REWARD_COINS, BOOST_BY_ID, COIN_PACK_BY_ID, boostMs, dayKey, type BoostDef } from '../core/shop';
 import { ITEMS, ITEM_BY_ID, MIN_WAIT_AFTER_ITEM_MS, giftFor, type ItemDef, type Inventory } from '../core/items';
 import { statsFromColors, type Stats } from '../core/stats';
+import { simulateBattle, type BattleResult } from '../core/battle';
+import { RANKED_DAILY_LIMIT, applyResult, freshRecord, makeRival, rollRecord, seasonOf, type RankTier, type RankedRecord, type Rival } from '../core/ranked';
 import type { EnvUsed, EnvironmentLog, FetchStatus, GameState, Milestone, Pixel } from '../core/types';
 import { GrowthConflictError, type GameRepository } from '../data/repository';
 import type { SettingsStore } from '../data/settings';
@@ -479,6 +481,78 @@ export class GameController {
     const { game, inventory } = await this.lock(() => this.deps.repo.useBoost(g.gameId, b.id, ms, now));
     this.setState({ game, inventory });
     return { boost: b, ms };
+  }
+
+  // ---- practice ranked battles -------------------------------------------------
+
+  /**
+   * The ranked record rolled into this season / day. When a season has just
+   * ended, its reward (coins by the best rank reached) is paid once here.
+   */
+  async rankedStatus(): Promise<{ rec: RankedRecord; champion: GameState | null; seasonReward: { season: string; tier: RankTier } | null }> {
+    const now = this.deps.clock.now();
+    let reward: { season: string; tier: RankTier } | null = null;
+    const { rec, wallet } = await this.deps.repo.updateRanked((cur) => {
+      const r = rollRecord(cur ?? freshRecord(seasonOf(now), dayKey(now)), seasonOf(now), dayKey(now));
+      reward = r.reward;
+      return { rec: r.rec, coins: r.reward?.tier.seasonCoins };
+    });
+    if (reward) this.setState({ coins: wallet });
+    const champId = await this.deps.repo.getChampion();
+    const champion = champId ? (await this.deps.repo.listArchivedGames()).find((g) => g.gameId === champId) ?? null : null;
+    return { rec, champion, seasonReward: reward };
+  }
+
+  /** Make a finished creature from the collection the ranked representative. */
+  setChampion(gameId: string): Promise<void> {
+    return this.deps.repo.setChampion(gameId, COMPLETE_GROWTH_INDEX + 1);
+  }
+
+  getChampionId(): Promise<string | null> {
+    return this.deps.repo.getChampion();
+  }
+
+  /**
+   * Today's next rival. Fixed by season, day and battle count, so looking
+   * again shows the same rival (no re-rolling for an easy one).
+   */
+  rivalFor(rec: RankedRecord, championId: string): Rival {
+    return makeRival(hash32(`${rec.season}:${rec.day}:${rec.played}`, championId), rec.rating);
+  }
+
+  /**
+   * Fight the rival. The result is decided and saved before it is shown, so
+   * closing the app mid-battle does not undo it.
+   */
+  async playRanked(championStats: Stats, championName: string, rival: Rival, rec: RankedRecord, championId: string): Promise<{ battle: BattleResult; before: number; after: number; rec: RankedRecord }> {
+    const seed = hash32(`${rec.season}:${rec.day}:${rec.played}:battle`, championId);
+    const battle = simulateBattle({ name: championName, stats: championStats }, { name: rival.name, stats: rival.stats }, seed);
+    const result = battle.winner === 'a' ? 'win' : battle.winner === 'b' ? 'loss' : 'draw';
+    const now = this.deps.clock.now();
+    let before = 0;
+    const saved = await this.deps.repo.updateRanked((cur) => {
+      const { rec: r, reward } = rollRecord(cur ?? freshRecord(seasonOf(now), dayKey(now)), seasonOf(now), dayKey(now));
+      if (reward) throw new Error('シーズンが切りかわりました。もう一度ひらいてください');
+      // another tab (or a new day) may have moved on: only the battle that was shown counts
+      if (r.season !== rec.season || r.day !== rec.day || r.played !== rec.played) throw new Error('対戦の状況が変わりました。もう一度ひらいてください');
+      if (r.played >= RANKED_DAILY_LIMIT) throw new Error('今日のランク戦はおしまい。また明日ね');
+      before = r.rating;
+      const rating = applyResult(r.rating, result);
+      const entry = { at: now, rival: rival.name, rivalRating: rival.rating, result, delta: rating - r.rating } as const;
+      return {
+        rec: {
+          ...r,
+          rating,
+          best: Math.max(r.best, rating),
+          wins: r.wins + (result === 'win' ? 1 : 0),
+          losses: r.losses + (result === 'loss' ? 1 : 0),
+          draws: r.draws + (result === 'draw' ? 1 : 0),
+          played: r.played + 1,
+          history: [entry, ...r.history].slice(0, 30),
+        },
+      };
+    });
+    return { battle, before, after: saved.rec.rating, rec: saved.rec };
   }
 
   /** Stats of the creature being raised now (from its dots). */

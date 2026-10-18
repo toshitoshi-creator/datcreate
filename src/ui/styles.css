@@ -1145,3 +1145,118 @@ button {
   background: rgba(139, 224, 176, 0.08);
   font-weight: 600;
 }
+
+/* ---- battle menu & ranked ------------------------------------------------------ */
+
+.hub-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hub-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+}
+.hub-card.ranked {
+  border-color: rgba(255, 217, 120, 0.35);
+  background: rgba(255, 217, 120, 0.06);
+}
+.hub-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+.hub-rank {
+  margin-top: 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.rank-card {
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 217, 120, 0.3);
+  background: rgba(255, 217, 120, 0.05);
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rank-tier {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 20px;
+  font-weight: 700;
+}
+.rank-icon {
+  font-size: 26px;
+}
+.rank-points {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+.rank-tier small {
+  font-size: 12px;
+  color: var(--muted);
+}
+.champion-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.champion-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.champion-badge {
+  text-align: center;
+  color: #ffd978;
+  font-weight: 600;
+}
+.rank-change {
+  margin: 6px 0;
+  font-variant-numeric: tabular-nums;
+}
+.rank-up {
+  margin-top: 4px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #ffd978;
+}
+.rank-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+.rank-history li {
+  display: flex;
+  gap: 10px;
+}
+.rh-result.win {
+  color: var(--ok);
+}
+.rh-result.loss {
+  color: var(--danger);
+}
+.rh-rival {
+  flex: 1;
+}
+.rh-delta {
+  font-variant-numeric: tabular-nums;
+}
+.center {
+  text-align: center;
+}

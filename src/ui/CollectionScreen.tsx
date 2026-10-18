@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { DAY_MS } from '../core/constants';
+import { COMPLETE_GROWTH_INDEX, DAY_MS } from '../core/constants';
 import type { GameState, Pixel } from '../core/types';
 import type { GameController } from '../engine/gameController';
 import { drawThumbnail } from '../render/renderer';
@@ -15,6 +15,9 @@ interface Props {
   onClose: () => void;
   /** Opened to pick a creature for a battle: shows a hint above the list. */
   forBattle?: boolean;
+  /** 'champion': opened to choose the ranked representative. */
+  mode?: 'champion';
+  onChampionChosen?: () => void;
 }
 
 /**
@@ -22,10 +25,14 @@ interface Props {
  * hundreds of entries (small cards, thumbnails drawn only when scrolled into
  * view); tapping one opens its detail, where it can be sent into a battle.
  */
-export function CollectionScreen({ controller, onClose, forBattle }: Props) {
+export function CollectionScreen({ controller, onClose, forBattle, mode, onChampionChosen }: Props) {
   const [items, setItems] = useState<GameState[] | null>(null);
   const [open, setOpen] = useState<GameState | null>(null);
   const [battling, setBattling] = useState(false);
+  const [champion, setChampion] = useState<string | null>(null);
+  useEffect(() => {
+    void controller.getChampionId().then(setChampion);
+  }, [controller]);
 
   const reload = () => controller.listCollection().then(setItems).catch(() => setItems([]));
   useEffect(() => {
@@ -54,6 +61,12 @@ export function CollectionScreen({ controller, onClose, forBattle }: Props) {
               void reload();
             }}
             onBattle={() => setBattling(true)}
+            isChampion={champion === open.gameId}
+            onMakeChampion={async () => {
+              await controller.setChampion(open.gameId);
+              setChampion(open.gameId);
+              onChampionChosen?.();
+            }}
             onDeleted={() => {
               setOpen(null);
               void reload();
@@ -67,14 +80,21 @@ export function CollectionScreen({ controller, onClose, forBattle }: Props) {
         ) : (
           <>
           <p className="muted small collection-hint" data-testid="collection-hint">
-            {forBattle ? '対決させたい子をえらんでね（' : '全'}{items.length.toLocaleString()}{forBattle ? '体）' : '体 ・ タップすると詳しく見られます'}
+            {mode === 'champion'
+              ? `ランク戦の代表をえらんでね（完成した子だけ・${items.length.toLocaleString()}体）`
+              : forBattle
+                ? `対決させたい子をえらんでね（${items.length.toLocaleString()}体）`
+                : `全${items.length.toLocaleString()}体 ・ タップすると詳しく見られます`}
           </p>
           <ul className="collection-grid" data-testid="collection-list">
             {items.map((g, i) => (
               <li key={g.gameId}>
                 <button className="collection-card" onClick={() => setOpen(g)} data-testid="collection-item">
                   <Thumb controller={controller} game={g} size={96} lazy />
-                  <span className="collection-name" data-testid="collection-name">{displayName(g, items.length - i)}</span>
+                  <span className="collection-name" data-testid="collection-name">
+                    {champion === g.gameId && <span aria-label="代表">★ </span>}
+                    {displayName(g, items.length - i)}
+                  </span>
                   <span className="muted small card-meta">No.{items.length - i}</span>
                   <span className="muted small card-meta">{(g.lastProcessedGrowthIndex + 1).toLocaleString()} dots</span>
                 </button>
@@ -124,9 +144,12 @@ interface DetailProps {
   onDeleted: () => void;
   onRenamed: (g: GameState) => void;
   onBattle: () => void;
+  isChampion: boolean;
+  onMakeChampion: () => Promise<void>;
 }
 
-function CollectionDetail({ game, number, controller, onDeleted, onRenamed, onBattle }: DetailProps) {
+function CollectionDetail({ game, number, controller, onDeleted, onRenamed, onBattle, isChampion, onMakeChampion }: DetailProps) {
+  const finished = game.lastProcessedGrowthIndex + 1 >= COMPLETE_GROWTH_INDEX + 1;
   const [confirm, setConfirm] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -157,6 +180,19 @@ function CollectionDetail({ game, number, controller, onDeleted, onRenamed, onBa
       <button className="btn primary wide" data-testid="battle-with" onClick={onBattle}>
         ⚔ このドットで戦う
       </button>
+      {isChampion ? (
+        <p className="champion-badge" data-testid="is-champion">★ ランク戦の代表です</p>
+      ) : finished ? (
+        <button
+          className="btn wide"
+          data-testid="make-champion"
+          onClick={() => onMakeChampion().catch((e) => setError((e as Error).message))}
+        >
+          ★ ランク戦の代表にする
+        </button>
+      ) : (
+        <p className="muted small">ランク戦の代表になれるのは、完成した（721ドットの）子だけです。</p>
+      )}
       <dl className="detail-facts">
         <div>
           <dt>ドット</dt>

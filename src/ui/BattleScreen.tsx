@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { simulateBattle, type BattleEvent, type BattleResult, type Side } from '../core/battle';
 import type { ItemDef } from '../core/items';
 import { freshSeed } from '../core/rng';
@@ -9,13 +9,13 @@ import type { GameController } from '../engine/gameController';
 import { PixelThumb } from './PixelThumb';
 import { StatsCard } from './StatsCard';
 
-interface Entry {
+export interface Entry {
   key: string;
   name: string;
   pixels: Pixel[] | null;
 }
 
-const STEP_MS = 650;
+export const STEP_MS = 450;
 
 interface Props {
   controller: GameController;
@@ -120,7 +120,7 @@ export function BattleScreen({ controller, game, onClose }: Props) {
   );
 }
 
-function FighterCard({ entry, stats, testId }: { entry: Entry; stats: Stats | null; testId: string }) {
+export function FighterCard({ entry, stats, testId }: { entry: Entry; stats: Stats | null; testId: string }) {
   return (
     <div className="fighter">
       <PixelThumb pixels={entry.pixels} size={120} />
@@ -137,6 +137,7 @@ function message(e: BattleEvent, names: Record<Side, string>): string {
     case 'critical': return `${me}のかいしんの一撃！ ${e.damage}のダメージ`;
     case 'dodge': return `${you}はひらりとかわした！`;
     case 'rest': return `${me}はひと休みしてスタミナを回復した`;
+    case 'quick': return `${me}はすばやく、もう一回！`;
     case 'ko': return `${me}はたおれた…`;
     case 'timeup': return 'じかんぎれ！ のこりHPで勝負！';
   }
@@ -149,10 +150,13 @@ interface FightProps {
   theirStats: Stats;
   fight: { result: BattleResult; shown: number; reward: ItemDef | null | undefined };
   onSkip: () => void;
-  onAgain: () => void;
+  /** Omit to show no "again" button. */
+  onAgain?: () => void;
+  /** Shown under the result (e.g. rank points). */
+  extra?: ReactNode;
 }
 
-function FightView({ me, them, myStats, theirStats, fight, onSkip, onAgain }: FightProps) {
+export function FightView({ me, them, myStats, theirStats, fight, onSkip, onAgain, extra }: FightProps) {
   const names = { a: me.name, b: them.name };
   const last = fight.shown > 0 ? fight.result.events[fight.shown - 1] : null;
   const hp = last?.hp ?? { a: myStats.hp, b: theirStats.hp };
@@ -185,11 +189,14 @@ function FightView({ me, them, myStats, theirStats, fight, onSkip, onAgain }: Fi
               きょうの勝利ボーナス: {fight.reward.icon} {fight.reward.name} ×1
             </div>
           )}
-          <div className="btn-row center">
-            <button className="btn primary" data-testid="battle-again" onClick={onAgain}>
-              もう一度
-            </button>
-          </div>
+          {extra}
+          {onAgain && (
+            <div className="btn-row center">
+              <button className="btn primary" data-testid="battle-again" onClick={onAgain}>
+                もう一度
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="btn-row center">

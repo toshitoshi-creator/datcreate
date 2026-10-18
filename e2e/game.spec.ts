@@ -238,9 +238,11 @@ test('after 30 days a finished creature goes to the collection and a new one sta
   await page.getByTestId('name-submit').click();
   await expect(page.getByTestId('start-button')).toBeVisible();
   await expect(page.getByTestId('start-open-collection')).toHaveText('▦ 図鑑を見る（1）');
-  // battles are also available from the start screen, with collection creatures
-  // battles start from the list -> detail -> "fight with this dot", against a wild dot
+  // battles are also available from the start screen, with collection creatures:
+  // menu -> list -> detail -> "fight with this dot", against a wild dot
   await page.getByTestId('start-open-battle').click();
+  await expect(page.getByTestId('hub-wild')).toHaveCount(0); // nothing is being raised
+  await page.getByTestId('hub-collection').click();
   await expect(page.getByTestId('collection-hint')).toContainText('対決させたい子をえらんでね（1体）');
   await page.getByTestId('collection-item').first().click();
   await page.getByTestId('battle-with').click();
@@ -256,7 +258,37 @@ test('after 30 days a finished creature goes to the collection and a new one sta
   await page.getByTestId('close-battle').click(); // setup -> detail
   await expect(page.getByTestId('collection-detail')).toBeVisible();
   await page.getByTestId('close-collection').click(); // detail -> list
-  await page.getByTestId('close-collection').click(); // list -> start
+  await page.getByTestId('close-collection').click(); // list -> menu
+
+  // practice ranked battle: choose the representative, then fight a rival for points
+  await page.getByTestId('hub-ranked').click();
+  await expect(page.getByTestId('rank-tier')).toHaveText('ブロンズ');
+  await expect(page.getByTestId('rank-points')).toHaveText('1000');
+  await page.getByTestId('pick-champion').click();
+  await expect(page.getByTestId('collection-hint')).toContainText('ランク戦の代表');
+  await page.getByTestId('collection-item').first().click();
+  await page.getByTestId('make-champion').click();
+  await expect(page.getByTestId('champion')).toContainText('もちまる');
+  await page.getByTestId('find-rival').click();
+  await expect(page.getByTestId('their-stats')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('ranked-screen')).toContainText('ライバル・');
+  await expect(page.getByTestId('ranked-screen')).not.toContainText(HIDDEN_WORDS);
+  await page.screenshot({ path: 'test-results/shots/ranked-versus.png' });
+  await page.getByTestId('start-ranked').click();
+  await page.getByTestId('skip-battle').click();
+  await expect(page.getByTestId('battle-result')).toContainText(/かち|まけ|ひきわけ/);
+  await expect(page.getByTestId('rank-change')).toContainText(/1000pt → (1020|1000|1005)pt/);
+  await page.screenshot({ path: 'test-results/shots/ranked-result.png' });
+  await page.getByTestId('close-ranked').click(); // result -> ranked home
+  await expect(page.getByTestId('ranked-left')).toHaveText('9');
+  await expect(page.getByTestId('rank-history').locator('li')).toHaveCount(1);
+  await page.screenshot({ path: 'test-results/shots/ranked-home.png' });
+  await page.reload(); // saved
+  await page.getByTestId('start-open-battle').click();
+  await page.getByTestId('hub-ranked').click();
+  await expect(page.getByTestId('ranked-left')).toHaveText('9');
+  await page.getByTestId('close-ranked').click();
+  await page.getByTestId('close-hub').click();
   await expect(page.getByTestId('start-button')).toBeVisible();
   await page.getByTestId('style-random').click();
   await page.getByTestId('start-button').click();
@@ -272,7 +304,7 @@ test('after 30 days a finished creature goes to the collection and a new one sta
 
   await page.getByTestId('open-collection').click();
   await expect(page.getByTestId('collection-item')).toHaveCount(2);
-  await expect(page.getByTestId('collection-name')).toHaveText(['もちまる', 'もちまる']);
+  await expect(page.getByTestId('collection-name')).toHaveText(['もちまる', '★ もちまる']);
   await expect(page.getByTestId('collection-item').first()).toContainText('721 dots');
   await page.waitForTimeout(500);
   await page.screenshot({ path: 'test-results/shots/collection.png' });
@@ -286,7 +318,7 @@ test('after 30 days a finished creature goes to the collection and a new one sta
   await expect(page.getByTestId('detail-name')).toHaveText('もちまる初代');
   await page.reload();
   await page.getByTestId('open-collection').click();
-  await expect(page.getByTestId('collection-name')).toHaveText(['もちまる', 'もちまる初代']);
+  await expect(page.getByTestId('collection-name')).toHaveText(['もちまる', '★ もちまる初代']);
 });
 
 test('feeding and playing: no dot is added, the next growth comes sooner, stock goes down', async ({ page }) => {
@@ -318,6 +350,7 @@ test('a small battle against a wild dot, with stats from colours and no names re
   await jump(page, 10 * 24 * HOUR);
   await expect(count(page)).toHaveText('241');
   await page.getByTestId('open-battle').click();
+  await page.getByTestId('hub-wild').click();
   const sum = async (id: string) => {
     const box = page.getByTestId(id);
     const v = await Promise.all(['strength', 'defense', 'speed', 'luck'].map(async (k) => Number(await box.getByTestId(`stat-${k}`).textContent())));
@@ -339,6 +372,7 @@ test('a small battle against a wild dot, with stats from colours and no names re
   await page.screenshot({ path: 'test-results/shots/battle-result.png' });
   await page.getByTestId('close-battle').click();
   await page.getByTestId('close-battle').click();
+  await page.getByTestId('close-hub').click();
   await expect(count(page)).toHaveText('241'); // battles never grow the creature
 });
 
@@ -379,6 +413,7 @@ test('a collection of 120 creatures: a light list, detail, and a battle from the
   });
   await page.reload();
   await page.getByTestId('start-open-battle').click();
+  await page.getByTestId('hub-collection').click();
   await expect(page.getByTestId('collection-hint')).toContainText('120体');
   await expect(page.getByTestId('collection-item')).toHaveCount(120);
   await page.screenshot({ path: 'test-results/shots/collection-120.png' });

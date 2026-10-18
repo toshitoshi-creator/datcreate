@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BattleScreen } from './BattleScreen';
+import { BattleHub } from './BattleHub';
 import { ShopScreen } from './ShopScreen';
 import { CollectionScreen } from './CollectionScreen';
 import { HistoryScreen } from './HistoryScreen';
@@ -39,7 +39,7 @@ function Game({ services }: { services: AppServices }) {
   if (state.status === 'error') return <ErrorView message={state.error ?? '不明なエラー'} />;
   if (state.status === 'no-game') {
     if (screen === 'collection') return <CollectionScreen controller={services.controller} onClose={() => setScreen('main')} />;
-    if (screen === 'battle') return <CollectionScreen controller={services.controller} forBattle onClose={() => setScreen('main')} />;
+    if (screen === 'battle') return <BattleHub controller={services.controller} hasActive={false} onClose={() => setScreen('main')} />;
     return (
       <StartScreen
         controller={services.controller}
@@ -58,7 +58,7 @@ function Game({ services }: { services: AppServices }) {
       {screen === 'history' && <HistoryScreen services={services} state={state} onClose={() => setScreen('main')} />}
       {screen === 'settings' && <SettingsScreen services={services} state={state} onClose={() => setScreen('main')} />}
       {screen === 'collection' && <CollectionScreen controller={services.controller} onClose={() => setScreen('main')} />}
-      {screen === 'battle' && <BattleScreen controller={services.controller} onClose={() => setScreen('main')} />}
+      {screen === 'battle' && <BattleHub controller={services.controller} hasActive onClose={() => setScreen('main')} />}
       {screen === 'shop' && <ShopScreen controller={services.controller} state={state} onClose={() => setScreen('main')} />}
     </>
   );

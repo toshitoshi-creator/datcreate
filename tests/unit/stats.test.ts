@@ -82,4 +82,34 @@ describe('battle', () => {
     expect(a).toEqual(b);
     expect(new Set(a.map((p) => `${p.x},${p.y}`)).size).toBe(200);
   });
+
+  it('is balanced: no leading stat dominates among grown creatures', () => {
+    const CORE = ['strength', 'defense', 'speed', 'luck'] as const;
+    const pool = Array.from({ length: 40 }, (_, k) => statsFromColors(growWildDot((k * 2654435761 + 17) >>> 0, 721).map((p) => p.color)));
+    const wins = new Array(pool.length).fill(0), games = new Array(pool.length).fill(0);
+    for (let i = 0; i < pool.length; i++)
+      for (let j = 0; j < pool.length; j++) {
+        if (i === j) continue;
+        for (let s = 0; s < 4; s++) {
+          const w = simulateBattle({ name: 'a', stats: pool[i] }, { name: 'b', stats: pool[j] }, i * 7919 + j * 31 + s).winner;
+          games[i]++;
+          games[j]++;
+          if (w === 'a') wins[i]++;
+          else if (w === 'b') wins[j]++;
+          else { wins[i] += 0.5; wins[j] += 0.5; }
+        }
+      }
+    const rate = wins.map((w, i) => w / games[i]);
+    const lead = (s: (typeof pool)[number]) => CORE.reduce((a, b) => (s[a] >= s[b] ? a : b));
+    for (const k of CORE) {
+      const r = rate.filter((_, i) => lead(pool[i]) === k);
+      if (r.length < 3) continue;
+      const mean = r.reduce((a, b) => a + b, 0) / r.length;
+      expect(mean, k).toBeGreaterThan(0.4);
+      expect(mean, k).toBeLessThan(0.6);
+    }
+    // nobody is hopeless or unbeatable
+    expect(Math.min(...rate)).toBeGreaterThan(0.2);
+    expect(Math.max(...rate)).toBeLessThan(0.8);
+  });
 });

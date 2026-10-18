@@ -1,6 +1,7 @@
 import { SAVE_FORMAT, SCHEMA_VERSION } from '../core/constants';
 import { STARTER_PACK, type GiftEntry, type Inventory } from '../core/items';
 import { sortMilestones } from '../core/milestones';
+import type { RankedRecord } from '../core/ranked';
 import type { EnvironmentLog, GameState, Milestone, Pixel } from '../core/types';
 import { STORES, openDatabase, reqToPromise, txDone } from './db';
 import { validateSave, type SaveFile } from './saveFile';
@@ -13,6 +14,9 @@ const WALLET_KEY = 'wallet';
 const PURCHASES_KEY = 'purchases';
 /** Rewarded ads watched today: { day, count }. */
 const AD_REWARD_KEY = 'adRewards';
+/** Practice ranked battles: the RankedRecord, and the representative's gameId. */
+const RANKED_KEY = 'ranked';
+const CHAMPION_KEY = 'champion';
 const BATTLE_REWARD_KEY = 'battleReward';
 
 export class GrowthConflictError extends Error {
@@ -223,7 +227,62 @@ export class GameRepository {
       throw new Error('図鑑の個体ではありません');
     }
     this.deleteGameInTx(tx, gameId);
+    const champ = await reqToPromise(tx.objectStore(STORES.meta).get(CHAMPION_KEY));
+    if (champ?.value === gameId) tx.objectStore(STORES.meta).delete(CHAMPION_KEY);
     await txDone(tx);
+  }
+
+  // ---- practice ranked battles ------------------------------------------------
+
+  async getChampion(): Promise<string | null> {
+    const tx = this.tx([STORES.meta]);
+    const rec = await reqToPromise(tx.objectStore(STORES.meta).get(CHAMPION_KEY));
+    await txDone(tx);
+    return (rec?.value as string | undefined) ?? null;
+  }
+
+  /** Choose the representative: a finished creature from the collection. */
+  async setChampion(gameId: string, minDots: number): Promise<void> {
+    const tx = this.tx([STORES.games, STORES.meta], 'readwrite');
+    const game = (await reqToPromise(tx.objectStore(STORES.games).get(gameId))) as GameState | undefined;
+    if (!game || game.archivedAt === undefined || game.lastProcessedGrowthIndex + 1 < minDots) {
+      try { tx.abort(); } catch { /* already finished */ }
+      throw new Error('代表にできるのは、図鑑にいる完成した子だけです');
+    }
+    tx.objectStore(STORES.meta).put({ key: CHAMPION_KEY, value: gameId });
+    await txDone(tx);
+  }
+
+  async getRanked(): Promise<RankedRecord | null> {
+    const tx = this.tx([STORES.meta]);
+    const rec = await reqToPromise(tx.objectStore(STORES.meta).get(RANKED_KEY));
+    await txDone(tx);
+    return (rec?.record as RankedRecord | undefined) ?? null;
+  }
+
+  /**
+   * Read-modify-write the ranked record in one transaction (safe across tabs).
+   * `coins` > 0 also adds a season reward to the wallet atomically.
+   */
+  async updateRanked(fn: (rec: RankedRecord | null) => { rec: RankedRecord; coins?: number }): Promise<{ rec: RankedRecord; wallet: number }> {
+    const tx = this.tx([STORES.meta], 'readwrite');
+    const meta = tx.objectStore(STORES.meta);
+    const cur = ((await reqToPromise(meta.get(RANKED_KEY)))?.record as RankedRecord | undefined) ?? null;
+    let wallet = ((await reqToPromise(meta.get(WALLET_KEY))) as { coins: number } | undefined)?.coins ?? 0;
+    let out: { rec: RankedRecord; coins?: number };
+    try {
+      out = fn(cur);
+    } catch (e) {
+      try { tx.abort(); } catch { /* already finished */ }
+      throw e;
+    }
+    meta.put({ key: RANKED_KEY, record: out.rec });
+    if (out.coins && out.coins > 0) {
+      wallet += out.coins;
+      meta.put({ key: WALLET_KEY, coins: wallet });
+    }
+    await txDone(tx);
+    return { rec: out.rec, wallet };
   }
 
   // ---- items ---------------------------------------------------------------
