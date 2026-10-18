@@ -63,6 +63,23 @@ test('30 days -> 721 dots, keeps growing afterwards, offline growth applied on r
   await expect(page.getByTestId('completion-dialog')).toHaveCount(0);
   await jump(page, 2 * HOUR);
   await expect(count(page)).toHaveText('771');
+  // after 30 days, "raise a new one" stays on the dot screen
+  await expect(page.getByTestId('new-creature-button')).toBeVisible();
+  await page.screenshot({ path: 'test-results/shots/new-creature-button.png' });
+  await page.reload();
+  await expect(page.getByTestId('new-creature-button')).toBeVisible();
+  await page.getByTestId('new-creature-button').click();
+  await expect(page.getByTestId('name-input')).toHaveValue('ドット1号');
+  await page.getByTestId('close-new-creature').click();
+  await expect(count(page)).toHaveText('771'); // closing changes nothing
+  await page.getByTestId('new-creature-button').click();
+  await page.getByTestId('name-input').fill('おおきいこ');
+  await page.getByTestId('name-submit').click();
+  await expect(page.getByTestId('start-button')).toBeVisible();
+  await expect(page.getByTestId('start-open-collection')).toHaveText('▦ 図鑑を見る（1）');
+  await page.getByTestId('start-button').click();
+  await expect(count(page)).toHaveText('1');
+  await expect(page.getByTestId('new-creature-button')).toHaveCount(0); // not before 30 days
 });
 
 test('reload keeps positions and colours identical, and history persists', async ({ page }) => {

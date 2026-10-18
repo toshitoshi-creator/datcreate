@@ -8,6 +8,7 @@ import { CreatureView, type CreatureViewHandle } from './CreatureView';
 import { CompletionDialog } from './CompletionDialog';
 import { ItemSheet } from './ItemSheet';
 import { BoostSheet } from './BoostSheet';
+import { NewCreatureSheet } from './NewCreatureSheet';
 import { DevPanel } from './DevPanel';
 import { useNow, useSettings } from './hooks';
 import type { AppServices } from './services';
@@ -25,7 +26,7 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
   const nowFn = useCallback(() => clock.now(), [clock]);
   const now = useNow(nowFn, 1000);
   const view = useRef<CreatureViewHandle>(null);
-  const [sheet, setSheet] = useState<'food' | 'toy' | 'boost' | null>(null);
+  const [sheet, setSheet] = useState<'food' | 'toy' | 'boost' | 'new' | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>();
   const showToast = (msg: string) => {
@@ -79,7 +80,7 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
 
   return (
     <div className="main-screen" aria-hidden={hidden}>
-      <CreatureView ref={view} controller={controller} settingsStore={settingsStore} settings={settings} bottomInset={state.completion === 'complete' ? 300 : 0} />
+      <CreatureView ref={view} controller={controller} settingsStore={settingsStore} settings={settings} bottomInset={state.completion === 'complete' ? 300 : state.completion === 'continuing' ? 60 : 0} />
 
       <header className="hud-top">
         <div>
@@ -142,6 +143,11 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
             ⏩ ペースアップ中（6倍） のこり {formatCountdown(boost.endsAt - now)}
           </div>
         )}
+        {state.completion !== 'growing' && (
+          <button className="btn primary wide new-creature-btn" data-testid="new-creature-button" onClick={() => setSheet('new')}>
+            🌱 新しい子を育てる
+          </button>
+        )}
         <div className="count-row">
           <div className="count">
             <span data-testid="dot-count">{state.pixelCount.toLocaleString()}</span>
@@ -179,6 +185,15 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
         <div className="toast" role="status" data-testid="item-toast">
           {toast}
         </div>
+      )}
+
+      {sheet === 'new' && (
+        <NewCreatureSheet
+          count={state.pixelCount}
+          suggestName={() => controller.suggestName()}
+          onSave={(name) => controller.retireToCollection(name)}
+          onClose={() => setSheet(null)}
+        />
       )}
 
       {sheet === 'boost' && (
