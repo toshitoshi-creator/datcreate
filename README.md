@@ -149,6 +149,15 @@ npm run sim -- 720 16 1   # 開発用: 個体を16体育てて scripts/out/ に�
   （途中でアプリが落ちても次回起動時に届き直す）。コイン・アイテムはリセットやセーブデータ読み込みでは消えない。
   アプリを削除すると消える（端末内保存のため。復元にはアカウントとサーバーが必要）
 
+- 広告を見てコイン（リワード広告、アプリ版のみ。Google AdMob / `@capacitor-community/admob`）:
+  1回 10コイン、1日5回まで（`AD_REWARD_COINS`, `AD_DAILY_LIMIT`）。最後まで見たときだけもらえ、途中で閉じたら回数は減らない。
+  お試し版と開発版は本物の広告のかわりに少し待つだけ。回数は端末の日付で毎日リセット
+- 広告の準備（リリース前）: AdMobでアプリとリワード広告ユニットを作り、
+  `android/app/src/main/AndroidManifest.xml` の `APPLICATION_ID` と `ios/App/App/Info.plist` の `GADApplicationIdentifier`
+  （今はGoogleのテスト用ID）を自分のIDに変え、ビルド時に `VITE_ADMOB_REWARDED_ANDROID` / `VITE_ADMOB_REWARDED_IOS`
+  に広告ユニットIDを入れる（未設定ならテスト広告だけが出る）。iPhoneでは初回にトラッキング許可をたずね、
+  EU等では同意フォームを出す。ストアの「広告あり」の申告とプライバシー情報（データの収集）の記入も必要
+
 ストアに出す前に必要なこと:
 - 各ストアで消耗型（consumable）アイテムを4つ登録する。製品ID: `coins_100`, `coins_550`, `coins_1200`, `coins_2600`
 - Google Play は課金を使うアプリの登録と、テスト用ライセンスの設定。Apple は有料アプリ契約（Paid Apps Agreement）

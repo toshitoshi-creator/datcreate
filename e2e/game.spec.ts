@@ -401,6 +401,7 @@ test('shop: coins are exchanged for a pace-up item, which speeds growth without 
   // the web build cannot sell coins (that is the app's store)
   await page.getByTestId('open-shop').click();
   await expect(page.getByTestId('shop-unavailable')).toBeVisible();
+  await expect(page.getByTestId('ads-unavailable')).toBeVisible();
   await expect(page.getByTestId('exchange-boost1')).toBeDisabled();
   await page.getByTestId('close-shop').click();
   await page.getByTestId('open-boost').click();

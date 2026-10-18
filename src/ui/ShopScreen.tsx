@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BOOSTS } from '../core/shop';
+import { AD_DAILY_LIMIT, AD_REWARD_COINS, BOOSTS } from '../core/shop';
 import type { ControllerState, GameController } from '../engine/gameController';
 
 interface Props {
@@ -48,6 +48,33 @@ export function ShopScreen({ controller, state, onClose }: Props) {
             {msg.text}
           </p>
         )}
+
+        <section className="section">
+          <h3>広告を見てもらう</h3>
+          {state.ads === 'none' ? (
+            <p className="muted small" data-testid="ads-unavailable">広告を見てコインをもらうのは、アプリ版（iPhone / Android）でできます。</p>
+          ) : (
+            <>
+              {state.ads === 'test' && <p className="notice" data-testid="test-ad-note">お試し版なので、本物の広告のかわりに少し待つだけです。</p>}
+              <button
+                className="btn wide ad-btn"
+                data-testid="watch-ad"
+                disabled={busy || state.adsLeftToday <= 0}
+                onClick={() =>
+                  run(async () => {
+                    const got = await controller.watchAdForCoins();
+                    return got > 0 ? `${got}コインもらいました！` : '最後まで見ると、コインがもらえます';
+                  })
+                }
+              >
+                {busy && state.ads === 'test' ? '広告を再生中…' : `▶ 広告を見て 🪙 ${AD_REWARD_COINS} もらう`}
+              </button>
+              <p className="muted small" data-testid="ads-left">
+                {state.adsLeftToday > 0 ? `今日はあと${state.adsLeftToday}回（1日${AD_DAILY_LIMIT}回まで）` : '今日の広告はおしまい。また明日見てね'}
+              </p>
+            </>
+          )}
+        </section>
 
         <section className="section">
           <h3>コインを買う</h3>

@@ -11,6 +11,8 @@ const INVENTORY_KEY = 'inventory';
 const WALLET_KEY = 'wallet';
 /** Store transactions already credited (so a re-delivered purchase is never counted twice). */
 const PURCHASES_KEY = 'purchases';
+/** Rewarded ads watched today: { day, count }. */
+const AD_REWARD_KEY = 'adRewards';
 const BATTLE_REWARD_KEY = 'battleReward';
 
 export class GrowthConflictError extends Error {
@@ -293,6 +295,31 @@ export class GameRepository {
     meta.put({ key: PURCHASES_KEY, list: [...done, { transactionId, productId, coins, at: now }] });
     await txDone(tx);
     return { coins: next, fresh: true };
+  }
+
+  /** Rewarded ads watched on `day` (local day key). */
+  async adRewardsOn(day: string): Promise<number> {
+    const tx = this.tx([STORES.meta]);
+    const rec = (await reqToPromise(tx.objectStore(STORES.meta).get(AD_REWARD_KEY))) as { day: string; count: number } | undefined;
+    await txDone(tx);
+    return rec?.day === day ? rec.count : 0;
+  }
+
+  /** Coins for a watched ad, at most `limit` times a day. Null when today's limit is reached. */
+  async creditAdReward(day: string, coins: number, limit: number): Promise<{ coins: number; watched: number } | null> {
+    const tx = this.tx([STORES.meta], 'readwrite');
+    const meta = tx.objectStore(STORES.meta);
+    const rec = (await reqToPromise(meta.get(AD_REWARD_KEY))) as { day: string; count: number } | undefined;
+    const watched = rec?.day === day ? rec.count : 0;
+    if (watched >= limit) {
+      await txDone(tx);
+      return null;
+    }
+    const wallet = ((await reqToPromise(meta.get(WALLET_KEY))) as { coins: number } | undefined)?.coins ?? 0;
+    meta.put({ key: WALLET_KEY, coins: wallet + coins });
+    meta.put({ key: AD_REWARD_KEY, day, count: watched + 1 });
+    await txDone(tx);
+    return { coins: wallet + coins, watched: watched + 1 };
   }
 
   /** Spend coins for one item, atomically. */

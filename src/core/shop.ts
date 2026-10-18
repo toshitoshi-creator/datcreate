@@ -45,3 +45,13 @@ export const BOOSTS: readonly BoostDef[] = [
 export const BOOST_BY_ID: ReadonlyMap<string, BoostDef> = new Map(BOOSTS.map((b) => [b.id, b]));
 
 export const boostMs = (b: BoostDef) => b.days * DAY_MS;
+
+/** Watching a rewarded ad (in the app) gives a few coins, a limited number of times a day. */
+export const AD_REWARD_COINS = 10;
+export const AD_DAILY_LIMIT = 5;
+
+/** Local calendar day key used for daily limits. */
+export function dayKey(t: number): string {
+  const d = new Date(t);
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}

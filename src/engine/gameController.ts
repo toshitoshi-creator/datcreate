@@ -5,7 +5,7 @@ import { freshSeed, hash32 } from '../core/rng';
 import { resolveStyle, type StyleChoice } from '../core/looks';
 import { timeOfDayFromHour } from '../core/time';
 import { BOOST_RATE, activeBoost, dueIndexAt, effectiveTime, pendingBoostMs, slotDueAt } from '../core/schedule';
-import { BOOST_BY_ID, COIN_PACK_BY_ID, boostMs, type BoostDef } from '../core/shop';
+import { AD_DAILY_LIMIT, AD_REWARD_COINS, BOOST_BY_ID, COIN_PACK_BY_ID, boostMs, dayKey, type BoostDef } from '../core/shop';
 import { ITEMS, ITEM_BY_ID, MIN_WAIT_AFTER_ITEM_MS, giftFor, type ItemDef, type Inventory } from '../core/items';
 import { statsFromColors, type Stats } from '../core/stats';
 import type { EnvUsed, EnvironmentLog, FetchStatus, GameState, Milestone, Pixel } from '../core/types';
@@ -14,6 +14,7 @@ import type { SettingsStore } from '../data/settings';
 import type { EnvironmentService } from '../services/environmentService';
 import type { Clock } from './clock';
 import type { PurchasePort } from './purchases';
+import type { AdPort } from './ads';
 
 export type ControllerStatus = 'loading' | 'no-game' | 'ready' | 'error';
 
@@ -41,6 +42,10 @@ export interface ControllerState {
   coins: number;
   /** How coins can be bought here: none (web), the real store, or the free trial store. */
   shop: 'none' | 'store' | 'test';
+  /** Rewarded ads: none (web), real ads, or the pretend trial ad. */
+  ads: 'none' | 'ads' | 'test';
+  /** Rewarded ads still available today. */
+  adsLeftToday: number;
 }
 
 export interface ReactionEvent {
@@ -126,7 +131,10 @@ export class GameController {
     inventory: {},
     coins: 0,
     shop: 'none',
+    ads: 'none',
+    adsLeftToday: 0,
   };
+  private adPort: AdPort | null = null;
   private store: PurchasePort | null = null;
   private stateListeners = new Set<(s: ControllerState) => void>();
   private pixelListeners = new Set<(e: PixelEvent) => void>();
@@ -387,6 +395,44 @@ export class GameController {
       this.setState({ coins });
     });
     this.setState({ shop: port.kind });
+  }
+
+  /** Connect rewarded ads (AdMob in the app, or the trial's pretend ad). */
+  async attachAds(port: AdPort): Promise<void> {
+    this.adPort = port;
+    await port.start();
+    await this.refreshAdsLeft();
+    this.setState({ ads: port.kind });
+  }
+
+  /** Recount today's remaining ads (the day may have changed). */
+  async refreshAdsLeft(): Promise<number> {
+    const watched = await this.deps.repo.adRewardsOn(dayKey(this.deps.clock.now()));
+    const left = Math.max(0, AD_DAILY_LIMIT - watched);
+    this.setState({ adsLeftToday: left });
+    return left;
+  }
+
+  /**
+   * Watch one rewarded ad for coins. Returns the coins received, or 0 if the
+   * ad was closed before the reward. Limited to AD_DAILY_LIMIT a day.
+   */
+  async watchAdForCoins(): Promise<number> {
+    if (!this.adPort) throw new Error('広告はアプリ版で見られます');
+    if ((await this.refreshAdsLeft()) <= 0) throw new Error('今日の広告はおしまい。また明日見てね');
+    let rewarded: boolean;
+    try {
+      rewarded = await this.adPort.showRewarded();
+    } catch {
+      throw new Error('広告を読みこめませんでした。時間をおいて試してください');
+    }
+    if (!rewarded) return 0;
+    // the day is the one when the ad finished
+    const r = await this.deps.repo.creditAdReward(dayKey(this.deps.clock.now()), AD_REWARD_COINS, AD_DAILY_LIMIT);
+    await this.refreshAdsLeft();
+    if (!r) return 0;
+    this.setState({ coins: r.coins });
+    return AD_REWARD_COINS;
   }
 
   coinPacks() {

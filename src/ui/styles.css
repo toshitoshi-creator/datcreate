@@ -1139,3 +1139,9 @@ button {
   background: rgba(159, 180, 255, 0.16);
   border: 1px solid rgba(159, 180, 255, 0.35);
 }
+.ad-btn {
+  width: 100%;
+  border-color: rgba(139, 224, 176, 0.4);
+  background: rgba(139, 224, 176, 0.08);
+  font-weight: 600;
+}
