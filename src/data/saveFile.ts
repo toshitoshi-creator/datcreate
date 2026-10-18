@@ -124,6 +124,9 @@ export function validateSave(input: unknown): ValidationResult {
     ...(typeof g.name === 'string' ? { name: g.name } : {}),
     ...(g.species !== undefined ? { species: g.species as Species } : {}),
     ...(isNum(g.timeBonusMs) && (g.timeBonusMs as number) >= 0 ? { timeBonusMs: g.timeBonusMs as number } : {}),
+    ...(Array.isArray(g.boosts) && (g.boosts as unknown[]).every((b) => isObj(b) && isStr(b.boostId) && isNum(b.at) && isNum(b.ms) && (b.ms as number) > 0)
+      ? { boosts: (g.boosts as { boostId: string; at: number; ms: number }[]).map((b) => ({ boostId: b.boostId, at: b.at, ms: b.ms })) }
+      : {}),
     ...(isNum(g.giftClaimedAt) ? { giftClaimedAt: g.giftClaimedAt as number } : {}),
     ...(Array.isArray(g.gift) ? { gift: (g.gift as { itemId: string; count: number }[]).filter((e) => isObj(e) && isStr(e.itemId) && isInt(e.count)) } : {}),
   };

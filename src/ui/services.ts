@@ -5,6 +5,9 @@ import { CompletionNotifier } from '../engine/completionNotifier';
 import { GameController, browserLock } from '../engine/gameController';
 import { EnvironmentService } from '../services/environmentService';
 import { nativeNotificationPort } from '../services/nativeNotifications';
+import { nativeStorePort } from '../services/storePurchases';
+import { testPurchasePort } from '../engine/purchases';
+import { COIN_PACKS } from '../core/shop';
 import { defaultWeatherProvider } from '../services/weather';
 
 export interface AppServices {
@@ -32,6 +35,9 @@ export function getServices(): Promise<AppServices> {
       geolocation: typeof navigator !== 'undefined' && 'geolocation' in navigator ? navigator.geolocation : null,
     });
     const controller = new GameController({ repo, environment, settings, clock, lock: browserLock() });
+    // Coins: the real store in the app; a free test store only in dev / the trial build.
+    const store = nativeStorePort(COIN_PACKS) ?? (devClock ? testPurchasePort(COIN_PACKS) : null);
+    if (store) void controller.attachStore(store).catch(() => undefined);
     const port = nativeNotificationPort();
     if (port) new CompletionNotifier(controller, settings, clock, port);
     return { controller, settings, clock, devClock, notifications: !!port };

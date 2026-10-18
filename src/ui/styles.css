@@ -833,7 +833,7 @@ button {
   position: absolute;
   left: 16px;
   right: 16px;
-  bottom: calc(env(safe-area-inset-bottom) + 170px);
+  bottom: calc(env(safe-area-inset-bottom) + 205px);
   padding: 10px 14px;
   border-radius: 12px;
   background: var(--panel-solid);
@@ -1038,4 +1038,104 @@ button {
 }
 .battle-log li {
   color: var(--muted);
+}
+
+/* ---- shop & pace-ups ---------------------------------------------------------- */
+
+.wallet {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 22px;
+  padding: 6px 0 4px;
+}
+.wallet-coins {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.wallet small {
+  font-size: 13px;
+  color: var(--muted);
+}
+.shop-grid {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.shop-tile {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 217, 120, 0.3);
+  background: rgba(255, 217, 120, 0.06);
+}
+.shop-coins {
+  font-size: 17px;
+  font-weight: 600;
+}
+.shop-price {
+  font-size: 13px;
+  color: var(--muted);
+}
+.boost-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.boost-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+}
+.boost-icon {
+  font-size: 26px;
+  width: 34px;
+  text-align: center;
+}
+.boost-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.boost-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+.boost-confirm {
+  display: flex;
+  gap: 6px;
+}
+.coin-btn {
+  min-width: 76px;
+  font-variant-numeric: tabular-nums;
+}
+.btn.primary-lite {
+  background: var(--accent);
+  color: #0b0d16;
+  border-color: transparent;
+  font-weight: 600;
+}
+.boost-pill {
+  display: inline-block;
+  margin-bottom: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: rgba(159, 180, 255, 0.16);
+  border: 1px solid rgba(159, 180, 255, 0.35);
 }

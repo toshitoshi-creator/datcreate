@@ -1,5 +1,5 @@
 import { COMPLETE_GROWTH_INDEX } from './constants';
-import { growthTime, scheduleStart } from './time';
+import { slotDueAt } from './schedule';
 import type { GameState } from './types';
 
 /**
@@ -11,5 +11,5 @@ import type { GameState } from './types';
 export function completionNoticeAt(game: GameState | null): number | null {
   if (!game || game.archivedAt !== undefined || game.keepGrowing) return null;
   if (game.lastProcessedGrowthIndex >= COMPLETE_GROWTH_INDEX) return null;
-  return growthTime(scheduleStart(game), COMPLETE_GROWTH_INDEX);
+  return slotDueAt(game, COMPLETE_GROWTH_INDEX);
 }

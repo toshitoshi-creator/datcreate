@@ -33,6 +33,11 @@ export interface GameState {
    * due at startedAt - timeBonusMs + i hours. Only ever increases.
    */
   timeBonusMs?: number;
+  /**
+   * Pace-ups (時短アイテム), oldest first: each runs after the previous one and
+   * makes growth BOOST_RATE times faster until it has saved `ms`. Only appended.
+   */
+  boosts?: { boostId: string; at: number; ms: number }[];
   /** Recent item uses (newest last, capped). */
   itemUses?: { itemId: string; at: number; ms: number }[];
   /** Thank-you present received at completion (once). */

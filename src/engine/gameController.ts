@@ -1,9 +1,11 @@
-import { CLOCK_ROLLBACK_TOLERANCE_MS, COMPLETE_GROWTH_INDEX, CURRENT_GENERATOR_VERSION, NAME_MAX_LENGTH, SCHEMA_VERSION, WEATHER_VALID_MS } from '../core/constants';
+import { CLOCK_ROLLBACK_TOLERANCE_MS, COMPLETE_GROWTH_INDEX, HOUR_MS, CURRENT_GENERATOR_VERSION, NAME_MAX_LENGTH, SCHEMA_VERSION, WEATHER_VALID_MS } from '../core/constants';
 import { Simulation } from '../core/generator';
 import { detectMilestones, sortMilestones } from '../core/milestones';
 import { freshSeed, hash32 } from '../core/rng';
 import { resolveStyle, type StyleChoice } from '../core/looks';
-import { dueGrowthIndex, growthTime, nextGrowthAt, scheduleStart, timeOfDayFromHour } from '../core/time';
+import { timeOfDayFromHour } from '../core/time';
+import { BOOST_RATE, activeBoost, dueIndexAt, effectiveTime, pendingBoostMs, slotDueAt } from '../core/schedule';
+import { BOOST_BY_ID, COIN_PACK_BY_ID, boostMs, type BoostDef } from '../core/shop';
 import { ITEMS, ITEM_BY_ID, MIN_WAIT_AFTER_ITEM_MS, giftFor, type ItemDef, type Inventory } from '../core/items';
 import { statsFromColors, type Stats } from '../core/stats';
 import type { EnvUsed, EnvironmentLog, FetchStatus, GameState, Milestone, Pixel } from '../core/types';
@@ -11,6 +13,7 @@ import { GrowthConflictError, type GameRepository } from '../data/repository';
 import type { SettingsStore } from '../data/settings';
 import type { EnvironmentService } from '../services/environmentService';
 import type { Clock } from './clock';
+import type { PurchasePort } from './purchases';
 
 export type ControllerStatus = 'loading' | 'no-game' | 'ready' | 'error';
 
@@ -34,6 +37,10 @@ export interface ControllerState {
   completion: Completion;
   /** Item counts (shared by all creatures). */
   inventory: Inventory;
+  /** Coins bought in the shop (shared by all creatures). */
+  coins: number;
+  /** How coins can be bought here: none (web), the real store, or the free trial store. */
+  shop: 'none' | 'store' | 'test';
 }
 
 export interface ReactionEvent {
@@ -117,7 +124,10 @@ export class GameController {
     locationStatus: null,
     completion: 'growing',
     inventory: {},
+    coins: 0,
+    shop: 'none',
   };
+  private store: PurchasePort | null = null;
   private stateListeners = new Set<(s: ControllerState) => void>();
   private pixelListeners = new Set<(e: PixelEvent) => void>();
   private growing: Promise<number> | null = null;
@@ -177,7 +187,7 @@ export class GameController {
     try {
       this.envLogs = await this.deps.repo.recentEnvironmentLogs(72);
       this.updateWeatherState();
-      this.setState({ inventory: await this.deps.repo.getInventory() });
+      this.setState({ inventory: await this.deps.repo.getInventory(), coins: await this.deps.repo.getCoins() });
       const game = await this.deps.repo.getActiveGame();
       if (!game) {
         this.setState({ status: 'no-game' });
@@ -248,7 +258,7 @@ export class GameController {
   /** Cheap check used by the display timer. */
   isGrowthDue(now = this.deps.clock.now()): boolean {
     const g = this.state.game;
-    return !!g && this.state.status === 'ready' && Math.min(growthCap(g), dueGrowthIndex(scheduleStart(g), now)) > g.lastProcessedGrowthIndex;
+    return !!g && this.state.status === 'ready' && Math.min(growthCap(g), dueIndexAt(g, now)) > g.lastProcessedGrowthIndex;
   }
 
   /** Generate and persist every due slot. Safe to call concurrently. */
@@ -289,7 +299,7 @@ export class GameController {
       this.setState({ clockWarning: false });
     }
 
-    const due = Math.min(growthCap(game), dueGrowthIndex(scheduleStart(game), now));
+    const due = Math.min(growthCap(game), dueIndexAt(game, now));
     const last = game.lastProcessedGrowthIndex;
     if (due <= last) return 0;
 
@@ -305,7 +315,7 @@ export class GameController {
         const pixels: Pixel[] = [];
         const milestones: Milestone[] = [];
         for (let i = from; i <= to; i++) {
-          const createdAt = growthTime(scheduleStart(game), i);
+          const createdAt = Math.floor(slotDueAt(game, i));
           const slot = this.envForSlot(createdAt, settings);
           const r = this.sim.generateNext({ createdAt, env: slot.env, environmentSnapshotId: slot.id });
           pixels.push(r.pixel);
@@ -352,14 +362,77 @@ export class GameController {
     if (this.state.completion === 'complete') throw new Error('この子は完成しています。新しい子を育てるか、育て続けるを選んでね');
     if (!((this.state.inventory[itemId] ?? 0) > 0)) throw new Error('そのアイテムを持っていません');
     const now = this.deps.clock.now();
-    const remaining = nextGrowthAt(scheduleStart(g), g.lastProcessedGrowthIndex) - now;
-    const ms = Math.min(item.minutes * 60_000, remaining - MIN_WAIT_AFTER_ITEM_MS);
+    // effective time still to go before the next dot; while a pace-up runs it passes faster
+    const remaining = g.startedAt + (g.lastProcessedGrowthIndex + 1) * HOUR_MS - effectiveTime(g, now);
+    const margin = MIN_WAIT_AFTER_ITEM_MS * (activeBoost(g, now) ? BOOST_RATE : 1);
+    const ms = Math.min(item.minutes * 60_000, remaining - margin);
     if (ms <= 0) throw new Error('もうすぐ大きくなるよ。少し待ってから使ってね');
     const { game, inventory } = await this.lock(() => this.deps.repo.useItem(g.gameId, itemId, Math.floor(ms), now));
     this.setState({ game, inventory });
     const ev = { item, ms: Math.floor(ms) };
     for (const l of this.reactionListeners) l(ev);
     return ev;
+  }
+
+  // ---- shop (coins) & pace-ups ---------------------------------------------------
+
+  /** Connect the coin store (App Store / Google Play, or the trial store). */
+  async attachStore(port: PurchasePort): Promise<void> {
+    this.store = port;
+    await port.start(async ({ transactionId, productId, quantity }) => {
+      const pack = COIN_PACK_BY_ID.get(productId);
+      if (!pack) throw new Error(`unknown product ${productId}`);
+      const units = Number.isInteger(quantity) && quantity > 0 ? quantity : 1;
+      const { coins } = await this.deps.repo.creditPurchase(transactionId, productId, pack.coins * units, this.deps.clock.now());
+      this.setState({ coins });
+    });
+    this.setState({ shop: port.kind });
+  }
+
+  coinPacks() {
+    return this.store?.products() ?? [];
+  }
+
+  /** Buy a coin pack. Resolves false when cancelled; coins arrive through the store handler. */
+  async buyCoins(productId: string): Promise<boolean> {
+    if (!this.store) throw new Error('コインはアプリ版で購入できます');
+    return this.store.buy(productId);
+  }
+
+  /** Exchange coins for one pace-up item. */
+  async exchangeBoost(boostId: string): Promise<BoostDef> {
+    const b = BOOST_BY_ID.get(boostId);
+    if (!b) throw new Error('不明なアイテムです');
+    if (this.state.coins < b.cost) throw new Error('コインが足りません');
+    const { coins, inventory } = await this.deps.repo.exchangeCoins(b.id, b.cost);
+    this.setState({ coins, inventory });
+    return b;
+  }
+
+  /**
+   * Use a pace-up item: no dot is added now; growth runs BOOST_RATE times
+   * faster until the item's days are saved. Before completion it saves at
+   * most what is left until the 721st dot.
+   */
+  async useBoost(boostId: string): Promise<{ boost: BoostDef; ms: number }> {
+    const b = BOOST_BY_ID.get(boostId);
+    if (!b) throw new Error('不明なアイテムです');
+    if (this.growing) await this.growing;
+    const g = this.state.game;
+    if (!g || this.state.status !== 'ready') throw new Error('育てている子がいません');
+    if (this.state.completion === 'complete') throw new Error('この子は完成しています。新しい子を育てるか、育て続けるを選んでね');
+    if (!((this.state.inventory[boostId] ?? 0) > 0)) throw new Error('そのアイテムを持っていません');
+    const now = this.deps.clock.now();
+    let ms = boostMs(b);
+    if (!g.keepGrowing) {
+      // what is still left to the 721st dot after everything already queued
+      const left = g.startedAt + COMPLETE_GROWTH_INDEX * HOUR_MS - effectiveTime(g, now) - pendingBoostMs(g, now);
+      ms = Math.min(ms, Math.floor(left));
+      if (ms < HOUR_MS) throw new Error('もうすぐ完成するので、これ以上は短くできません');
+    }
+    const { game, inventory } = await this.lock(() => this.deps.repo.useBoost(g.gameId, b.id, ms, now));
+    this.setState({ game, inventory });
+    return { boost: b, ms };
   }
 
   /** Stats of the creature being raised now (from its dots). */

@@ -7,6 +7,10 @@ import { validateSave, type SaveFile } from './saveFile';
 
 const ACTIVE_KEY = 'activeGameId';
 const INVENTORY_KEY = 'inventory';
+/** Coins bought with real money. Never touched by reset or import. */
+const WALLET_KEY = 'wallet';
+/** Store transactions already credited (so a re-delivered purchase is never counted twice). */
+const PURCHASES_KEY = 'purchases';
 const BATTLE_REWARD_KEY = 'battleReward';
 
 export class GrowthConflictError extends Error {
@@ -258,6 +262,75 @@ export class GameRepository {
     if (counts[itemId] === 0) delete counts[itemId];
     const uses = [...(game.itemUses ?? []), { itemId, at: now, ms }].slice(-200);
     const updated: GameState = { ...game, timeBonusMs: (game.timeBonusMs ?? 0) + ms, itemUses: uses, updatedAt: now };
+    meta.put({ key: INVENTORY_KEY, counts });
+    games.put(updated);
+    await txDone(tx);
+    return { game: updated, inventory: counts };
+  }
+
+  async getCoins(): Promise<number> {
+    const tx = this.tx([STORES.meta]);
+    const rec = (await reqToPromise(tx.objectStore(STORES.meta).get(WALLET_KEY))) as { coins: number } | undefined;
+    await txDone(tx);
+    return rec?.coins ?? 0;
+  }
+
+  /**
+   * Credit a store purchase. Idempotent per transaction: the store may deliver
+   * the same purchase again (e.g. the app closed before it was finished).
+   */
+  async creditPurchase(transactionId: string, productId: string, coins: number, now: number): Promise<{ coins: number; fresh: boolean }> {
+    const tx = this.tx([STORES.meta], 'readwrite');
+    const meta = tx.objectStore(STORES.meta);
+    const wallet = ((await reqToPromise(meta.get(WALLET_KEY))) as { coins: number } | undefined)?.coins ?? 0;
+    const done = ((await reqToPromise(meta.get(PURCHASES_KEY))) as { list: { transactionId: string }[] } | undefined)?.list ?? [];
+    if (done.some((p) => p.transactionId === transactionId)) {
+      await txDone(tx);
+      return { coins: wallet, fresh: false };
+    }
+    const next = wallet + coins;
+    meta.put({ key: WALLET_KEY, coins: next });
+    meta.put({ key: PURCHASES_KEY, list: [...done, { transactionId, productId, coins, at: now }] });
+    await txDone(tx);
+    return { coins: next, fresh: true };
+  }
+
+  /** Spend coins for one item, atomically. */
+  async exchangeCoins(itemId: string, cost: number): Promise<{ coins: number; inventory: Inventory }> {
+    const tx = this.tx([STORES.meta], 'readwrite');
+    const meta = tx.objectStore(STORES.meta);
+    const wallet = ((await reqToPromise(meta.get(WALLET_KEY))) as { coins: number } | undefined)?.coins ?? 0;
+    const rec = (await reqToPromise(meta.get(INVENTORY_KEY))) as { key: string; counts: Inventory } | undefined;
+    if (!(cost > 0) || wallet < cost) {
+      try { tx.abort(); } catch { /* already finished */ }
+      throw new Error('コインが足りません');
+    }
+    const counts = { ...(rec?.counts ?? STARTER_PACK) };
+    counts[itemId] = (counts[itemId] ?? 0) + 1;
+    meta.put({ key: WALLET_KEY, coins: wallet - cost });
+    meta.put({ key: INVENTORY_KEY, counts });
+    await txDone(tx);
+    return { coins: wallet - cost, inventory: counts };
+  }
+
+  /** Start a pace-up: uses one item and appends it to the game's pace-ups. */
+  async useBoost(gameId: string, boostId: string, ms: number, now: number): Promise<{ game: GameState; inventory: Inventory }> {
+    const tx = this.tx([STORES.meta, STORES.games], 'readwrite');
+    const meta = tx.objectStore(STORES.meta);
+    const games = tx.objectStore(STORES.games);
+    const rec = (await reqToPromise(meta.get(INVENTORY_KEY))) as { key: string; counts: Inventory } | undefined;
+    const game = (await reqToPromise(games.get(gameId))) as GameState | undefined;
+    const fail = (msg: string) => {
+      try { tx.abort(); } catch { /* already finished */ }
+      return new Error(msg);
+    };
+    const counts = { ...(rec?.counts ?? STARTER_PACK) };
+    if (!game || game.archivedAt !== undefined) throw fail('育てている子がいません');
+    if (!(counts[boostId] > 0)) throw fail('そのアイテムを持っていません');
+    if (!(ms > 0)) throw fail('今は使えません');
+    counts[boostId] -= 1;
+    if (counts[boostId] === 0) delete counts[boostId];
+    const updated: GameState = { ...game, boosts: [...(game.boosts ?? []), { boostId, at: now, ms }], updatedAt: now };
     meta.put({ key: INVENTORY_KEY, counts });
     games.put(updated);
     await txDone(tx);

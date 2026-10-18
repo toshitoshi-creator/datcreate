@@ -395,3 +395,53 @@ test('a collection of 120 creatures: a light list, detail, and a battle from the
   await page.getByTestId('skip-battle').click();
   await expect(page.getByTestId('battle-result')).toContainText(/かち|まけ|ひきわけ/);
 });
+
+test('shop: coins are exchanged for a pace-up item, which speeds growth without adding a dot on the spot', async ({ page }) => {
+  await startGame(page);
+  // the web build cannot sell coins (that is the app's store)
+  await page.getByTestId('open-shop').click();
+  await expect(page.getByTestId('shop-unavailable')).toBeVisible();
+  await expect(page.getByTestId('exchange-boost1')).toBeDisabled();
+  await page.getByTestId('close-shop').click();
+  await page.getByTestId('open-boost').click();
+  await expect(page.getByTestId('boost-open-shop')).toBeVisible();
+  await page.getByTestId('close-boosts').click();
+  // coins as if bought in the app
+  await page.evaluate(async () => {
+    const db: IDBDatabase = await new Promise((res, rej) => {
+      const r = indexedDB.open('dot-life');
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+    const tx = db.transaction(['meta'], 'readwrite');
+    tx.objectStore('meta').put({ key: 'wallet', coins: 550 });
+    await new Promise((res) => (tx.oncomplete = res));
+  });
+  await page.reload();
+  await expect(page.getByTestId('hud-coins')).toHaveText('550');
+  await page.getByTestId('open-shop').click();
+  await expect(page.getByTestId('coin-balance')).toHaveText('550');
+  await page.getByTestId('exchange-boost1').click();
+  await page.getByTestId('confirm-exchange-boost1').click();
+  await expect(page.getByTestId('coin-balance')).toHaveText('450');
+  await expect(page.getByTestId('owned-boost1')).toHaveText('1');
+  await page.screenshot({ path: 'test-results/shots/shop.png', fullPage: true });
+  await page.getByTestId('close-shop').click();
+  await page.getByTestId('open-boost').click();
+  await page.getByTestId('use-boost1').click();
+  await page.getByTestId('confirm-boost-boost1').click();
+  await expect(page.getByTestId('item-toast')).toContainText('1日ぶん');
+  await expect(page.getByTestId('boost-status')).toContainText('ペースアップ中');
+  await expect(count(page)).toHaveText('1'); // no dot on the spot
+  await expect(page.getByTestId('countdown')).toHaveText(/^(10:00|9:5\d|09:5\d)$/);
+  await page.screenshot({ path: 'test-results/shots/boost.png' });
+  await jump(page, 4 * HOUR);
+  await expect(count(page)).toHaveText('25'); // 4 h at 6x = 24 dots, + the first
+  await jump(page, 2 * HOUR);
+  // done after 4.8 h, then hourly again, a day ahead: 6 h + 24 h saved = 30 dots, + the first
+  await expect(count(page)).toHaveText('31');
+  await expect(page.getByTestId('boost-status')).toHaveCount(0);
+  await page.reload();
+  await expect(count(page)).toHaveText('31');
+  await expect(page.getByTestId('hud-coins')).toHaveText('450');
+});

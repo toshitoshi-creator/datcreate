@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { TIME_OF_DAY_LABEL, WEATHER_LABEL } from '../core/environment';
-import { elapsedParts, formatCountdown, nextGrowthAt, scheduleStart, timeOfDayFromHour } from '../core/time';
+import { elapsedParts, formatCountdown, timeOfDayFromHour } from '../core/time';
+import { activeBoost, nextSlotDueAt } from '../core/schedule';
 import type { ControllerState } from '../engine/gameController';
 import { CreatureView, type CreatureViewHandle } from './CreatureView';
 import { CompletionDialog } from './CompletionDialog';
 import { ItemSheet } from './ItemSheet';
+import { BoostSheet } from './BoostSheet';
 import { DevPanel } from './DevPanel';
 import { useNow, useSettings } from './hooks';
 import type { AppServices } from './services';
@@ -12,7 +14,7 @@ import type { AppServices } from './services';
 interface Props {
   services: AppServices;
   state: ControllerState;
-  onOpen: (screen: 'history' | 'settings' | 'collection' | 'battle') => void;
+  onOpen: (screen: 'history' | 'settings' | 'collection' | 'battle' | 'shop') => void;
   hidden: boolean;
 }
 
@@ -22,7 +24,7 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
   const nowFn = useCallback(() => clock.now(), [clock]);
   const now = useNow(nowFn, 1000);
   const view = useRef<CreatureViewHandle>(null);
-  const [sheet, setSheet] = useState<'food' | 'toy' | null>(null);
+  const [sheet, setSheet] = useState<'food' | 'toy' | 'boost' | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>();
   const showToast = (msg: string) => {
@@ -54,8 +56,9 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
 
   const game = state.game!;
   const el = elapsedParts(game.startedAt, now);
-  const next = nextGrowthAt(scheduleStart(game), game.lastProcessedGrowthIndex);
+  const next = nextSlotDueAt(game);
   const remaining = next - now;
+  const boost = state.completion === 'complete' ? null : activeBoost(game, now);
   const tod = timeOfDayFromHour(new Date(now).getHours());
   const weather = state.weatherLog?.weather ?? 'unknown';
 
@@ -72,6 +75,10 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
           {state.completion !== 'growing' && <div className="done-pill" data-testid="complete-badge">完成</div>}
         </div>
         <nav className="hud-actions">
+          <button className="icon-btn" data-testid="open-shop" onClick={() => onOpen('shop')} aria-label="ショップ">
+            <span aria-hidden>🪙</span>
+            <small data-testid="hud-coins">{state.coins.toLocaleString()}</small>
+          </button>
           <button className="icon-btn" data-testid="open-collection" onClick={() => onOpen('collection')} aria-label="図鑑">
             <span aria-hidden>▦</span>
             <small>図鑑</small>
@@ -110,6 +117,11 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
       </div>
 
       <footer className="hud-bottom">
+        {boost && (
+          <div className="boost-pill" data-testid="boost-status">
+            ⏩ ペースアップ中（6倍） のこり {formatCountdown(boost.endsAt - now)}
+          </div>
+        )}
         <div className="count-row">
           <div className="count">
             <span data-testid="dot-count">{state.pixelCount.toLocaleString()}</span>
@@ -121,6 +133,9 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
             </button>
             <button className="care-btn" data-testid="open-toy" onClick={() => setSheet('toy')} disabled={state.completion === 'complete'}>
               <span aria-hidden>🎈</span> あそぶ
+            </button>
+            <button className="care-btn" data-testid="open-boost" onClick={() => setSheet('boost')} disabled={state.completion === 'complete'}>
+              <span aria-hidden>⏩</span> 時短
             </button>
           </div>
         </div>
@@ -146,7 +161,28 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
         </div>
       )}
 
-      {sheet && (
+      {sheet === 'boost' && (
+        <BoostSheet
+          inventory={state.inventory}
+          onClose={() => setSheet(null)}
+          onOpenShop={() => {
+            setSheet(null);
+            onOpen('shop');
+          }}
+          onUse={async (id) => {
+            try {
+              const { boost: b, ms } = await controller.useBoost(id);
+              setSheet(null);
+              const days = ms / 86_400_000;
+              showToast(`${b.icon} ${b.name}を使った！ ${days >= 1 && Number.isInteger(days) ? `${days}日` : `${Math.round(ms / 3_600_000)}時間`}ぶん、ペースアップ！`);
+            } catch (e) {
+              showToast((e as Error).message);
+            }
+          }}
+        />
+      )}
+
+      {(sheet === 'food' || sheet === 'toy') && (
         <ItemSheet
           kind={sheet}
           inventory={state.inventory}
