@@ -13,9 +13,10 @@ interface Props {
   controller: GameController;
   onStart: (style: Choice) => Promise<void>;
   onOpenCollection: () => void;
+  onOpenBattle: () => void;
 }
 
-export function StartScreen({ controller, onStart, onOpenCollection }: Props) {
+export function StartScreen({ controller, onStart, onOpenCollection, onOpenBattle }: Props) {
   const [busy, setBusy] = useState(false);
   const [collected, setCollected] = useState(0);
   useEffect(() => {
@@ -65,9 +66,14 @@ export function StartScreen({ controller, onStart, onOpenCollection }: Props) {
         はじめる
       </button>
       {collected > 0 && (
-        <button className="text-btn" data-testid="start-open-collection" onClick={onOpenCollection}>
-          図鑑を見る（{collected}）
-        </button>
+        <div className="start-links">
+          <button className="btn" data-testid="start-open-collection" onClick={onOpenCollection}>
+            ▦ 図鑑を見る（{collected}）
+          </button>
+          <button className="btn" data-testid="start-open-battle" onClick={onOpenBattle}>
+            ⚔ 対決
+          </button>
+        </div>
       )}
     </div>
   );

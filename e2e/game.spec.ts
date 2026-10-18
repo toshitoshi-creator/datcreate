@@ -237,7 +237,17 @@ test('after 30 days a finished creature goes to the collection and a new one sta
   await page.screenshot({ path: 'test-results/shots/naming.png' });
   await page.getByTestId('name-submit').click();
   await expect(page.getByTestId('start-button')).toBeVisible();
-  await expect(page.getByTestId('start-open-collection')).toHaveText('図鑑を見る（1）');
+  await expect(page.getByTestId('start-open-collection')).toHaveText('▦ 図鑑を見る（1）');
+  // battles are also available from the start screen, with collection creatures
+  await page.getByTestId('start-open-battle').click();
+  await expect(page.getByTestId('pick-mine')).toContainText('もちまる');
+  await expect(page.getByTestId('their-stats')).toBeVisible();
+  await page.getByTestId('start-battle').click();
+  await page.getByTestId('skip-battle').click();
+  await expect(page.getByTestId('battle-result')).toContainText(/かち|まけ|ひきわけ/);
+  await page.getByTestId('close-battle').click();
+  await page.getByTestId('close-battle').click();
+  await expect(page.getByTestId('start-button')).toBeVisible();
   await page.getByTestId('style-random').click();
   await page.getByTestId('start-button').click();
   await expect(count(page)).toHaveText('1');
