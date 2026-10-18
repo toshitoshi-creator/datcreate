@@ -1,4 +1,16 @@
+import { GEMS } from '../core/gems';
 import type { Pixel } from '../core/types';
+
+/** Colour a dot is drawn with: precious dots show their metal / gem colour. */
+export function shownColor(p: Pixel): string {
+  return p.gem ? GEMS[p.gem].color : p.color;
+}
+
+/** 0..1 twinkle of a precious dot at time `now` (each dot has its own phase). */
+function twinkle(p: Pixel, now: number): number {
+  const phase = ((p.growthIndex * 0.618034) % 1) + now / (p.gem === 'diamond' ? 1300 : 2100);
+  return Math.pow(Math.max(0, Math.sin(phase * Math.PI * 2)), 4);
+}
 
 export interface Camera {
   /** CSS px per grid cell. */
@@ -60,6 +72,8 @@ export class CreatureRenderer {
   private bakeOX = 0;
   private bakeOY = 0;
   private baked: Pixel[] = [];
+  /** Precious dots among the baked ones (drawn with a sparkle on top). */
+  private gems: Pixel[] = [];
   private bounds: Bounds | null = null;
   private pending: Pixel[] = [];
   private revealPerFrame = 1;
@@ -93,6 +107,7 @@ export class CreatureRenderer {
   /** Replace all dots (initial load). */
   setPixels(pixels: readonly Pixel[], intro: boolean) {
     this.baked = [];
+    this.gems = [];
     this.pending = [];
     this.anims = [];
     this.bounds = null;
@@ -165,7 +180,7 @@ export class CreatureRenderer {
     this.silCtx.fillStyle = OUTLINE;
     for (const p of this.baked) {
       this.silCtx.fillRect(p.x - ox, p.y - oy, 1, 1);
-      this.bakeCtx.fillStyle = p.color;
+      this.bakeCtx.fillStyle = shownColor(p);
       this.bakeCtx.fillRect(p.x - ox, p.y - oy, 1, 1);
     }
   }
@@ -179,7 +194,8 @@ export class CreatureRenderer {
       this.allocBake(b.minX - mx, b.minY - my, w + 2 * mx, h + 2 * my);
     }
     this.baked.push(p);
-    this.bakeCtx.fillStyle = p.color;
+    if (p.gem) this.gems.push(p);
+    this.bakeCtx.fillStyle = shownColor(p);
     this.bakeCtx.fillRect(p.x - this.bakeOX, p.y - this.bakeOY, 1, 1);
     this.silCtx.fillStyle = OUTLINE;
     this.silCtx.fillRect(p.x - this.bakeOX, p.y - this.bakeOY, 1, 1);
@@ -425,7 +441,7 @@ export class CreatureRenderer {
       }
       for (const p of this.baked) {
         if (p.x + 1 < wx0 || p.x > wx1 || p.y + 1 < wy0 || p.y > wy1) continue;
-        ctx.fillStyle = p.color;
+        ctx.fillStyle = shownColor(p);
         ctx.fillRect(toSX(p.x) + gap / 2, toSY(p.y) + gap / 2, z - gap, z - gap);
       }
     } else {
@@ -449,6 +465,39 @@ export class CreatureRenderer {
       }
     }
 
+    // precious dots sparkle (display only)
+    if (this.gems.length) {
+      for (const p of this.gems) {
+        if (p.x + 1 < wx0 || p.x > wx1 || p.y + 1 < wy0 || p.y > wy1) continue;
+        const tw = this.animationEnabled ? twinkle(p, now) : 0.35;
+        const x = toSX(p.x), y = toSY(p.y);
+        // a faint glow so it stands out on any body colour
+        ctx.globalAlpha = intro * (0.18 + 0.22 * tw);
+        ctx.fillStyle = GEMS[p.gem!].color;
+        ctx.fillRect(x - z * 0.3, y - z * 0.3, z * 1.6, z * 1.6);
+        if (z >= 5) {
+          // metallic bevel: dark lower-right edge, bright upper-left corner
+          ctx.globalAlpha = intro * 0.45;
+          ctx.fillStyle = '#2a2140';
+          ctx.fillRect(x + z * 0.78, y + z * 0.12, z * 0.14, z * 0.8);
+          ctx.fillRect(x + z * 0.12, y + z * 0.78, z * 0.8, z * 0.14);
+        }
+        ctx.globalAlpha = intro * (0.45 + 0.5 * tw);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(x + z * 0.18, y + z * 0.18, z * 0.28, z * 0.28);
+        if (tw > 0.05 && z >= 3) {
+          // a small four-point star over the dot
+          const cx = x + z / 2, cy = y + z / 2;
+          const r = z * (p.gem === 'diamond' ? 1.1 : 0.75) * (0.6 + 0.4 * tw);
+          const w = Math.max(1, z * 0.12);
+          ctx.globalAlpha = intro * tw;
+          ctx.fillRect(cx - w / 2, cy - r, w, 2 * r);
+          ctx.fillRect(cx - r, cy - w / 2, 2 * r, w);
+        }
+      }
+      ctx.globalAlpha = intro;
+    }
+
     // animating dots on top
     for (const a of this.anims) {
       const t = Math.min(1, (now - a.start) / a.dur);
@@ -456,12 +505,12 @@ export class CreatureRenderer {
       const size = Math.max(0.5, z * ease * (z >= 7 ? 0.92 : 1));
       const px = toSX(a.p.x + 0.5), py = toSY(a.p.y + 0.5);
       ctx.globalAlpha = Math.min(1, t * 2) * intro;
-      ctx.fillStyle = a.p.color;
+      ctx.fillStyle = shownColor(a.p);
       ctx.fillRect(px - size / 2, py - size / 2, size, size);
       if (a.pop) {
         const ring = z * (1 + t * 3);
         ctx.globalAlpha = (1 - t) * 0.6;
-        ctx.strokeStyle = a.p.color;
+        ctx.strokeStyle = shownColor(a.p);
         ctx.lineWidth = Math.max(1, z * 0.12);
         ctx.strokeRect(px - ring / 2, py - ring / 2, ring, ring);
       }
@@ -518,7 +567,7 @@ export function drawThumbnail(canvas: HTMLCanvasElement, pixels: readonly Pixel[
   tmp.height = h;
   const tctx = tmp.getContext('2d')!;
   for (let i = 0; i < n; i++) {
-    tctx.fillStyle = pixels[i].color;
+    tctx.fillStyle = shownColor(pixels[i]);
     tctx.fillRect(pixels[i].x - minX, pixels[i].y - minY, 1, 1);
   }
   ctx.fillStyle = BG;

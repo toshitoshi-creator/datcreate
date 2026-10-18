@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BattleResult } from '../core/battle';
 import { RANKED_DAILY_LIMIT, nextTier, seasonLabel, tierOf, type RankTier, type RankedRecord, type Rival } from '../core/ranked';
-import { statsFromColors } from '../core/stats';
+import { statsOf } from '../core/stats';
 import type { GameState, Pixel } from '../core/types';
 import type { GameController } from '../engine/gameController';
 import { FighterCard, FightView, STEP_MS, type Entry } from './BattleScreen';
@@ -35,7 +35,7 @@ export function RankedScreen({ controller, onPickChampion, onClose }: Props) {
     return () => clearInterval(timer.current);
   }, [controller]);
 
-  const champStats = useMemo(() => (champPixels ? statsFromColors(champPixels.map((p) => p.color)) : null), [champPixels]);
+  const champStats = useMemo(() => (champPixels ? statsOf(champPixels) : null), [champPixels]);
   const champ = status?.champion ?? null;
   const me: Entry | null = champ ? { key: champ.gameId, name: champ.name ?? 'なまえのない子', pixels: champPixels } : null;
   const them: Entry | null = rival ? { key: 'rival', name: rival.name, pixels: rival.pixels } : null;

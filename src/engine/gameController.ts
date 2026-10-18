@@ -7,7 +7,8 @@ import { timeOfDayFromHour } from '../core/time';
 import { BOOST_RATE, activeBoost, dueIndexAt, effectiveTime, pendingBoostMs, slotDueAt } from '../core/schedule';
 import { AD_DAILY_LIMIT, AD_REWARD_COINS, BOOST_BY_ID, COIN_PACK_BY_ID, boostMs, dayKey, type BoostDef } from '../core/shop';
 import { ITEMS, ITEM_BY_ID, MIN_WAIT_AFTER_ITEM_MS, giftFor, type ItemDef, type Inventory } from '../core/items';
-import { statsFromColors, type Stats } from '../core/stats';
+import { statsOf, type Stats } from '../core/stats';
+import { rollGem } from '../core/gems';
 import { simulateBattle, type BattleResult } from '../core/battle';
 import { RANKED_DAILY_LIMIT, applyResult, freshRecord, makeRival, rollRecord, seasonOf, type RankTier, type RankedRecord, type Rival } from '../core/ranked';
 import type { EnvUsed, EnvironmentLog, FetchStatus, GameState, Milestone, Pixel } from '../core/types';
@@ -253,7 +254,7 @@ export class GameController {
     };
     const sim = new Simulation(game);
     const slot = this.envForSlot(now);
-    const { pixel } = sim.generateNext({ createdAt: now, env: slot.env, environmentSnapshotId: slot.id });
+    const pixel: Pixel = { ...sim.generateNext({ createdAt: now, env: slot.env, environmentSnapshotId: slot.id }).pixel, gem: null };
     await this.deps.repo.createGame(game, pixel, null);
     this.sim = sim;
     this.pixels = [pixel];
@@ -317,6 +318,7 @@ export class GameController {
     const isCatchUp = total > 1;
     if (isCatchUp) this.setState({ catchUp: { done: 0, total } });
     const settings = this.deps.settings.get();
+    const place = settings.locationEnabled ? this.deps.environment.placeCode() : null;
     let added = 0;
     try {
       while (this.sim.nextIndex <= due) {
@@ -328,6 +330,11 @@ export class GameController {
           const createdAt = Math.floor(slotDueAt(game, i));
           const slot = this.envForSlot(createdAt, settings);
           const r = this.sim.generateNext({ createdAt, env: slot.env, environmentSnapshotId: slot.id });
+          // precious dot: decided now (weather, time, this launch, place) and stored with the dot
+          const box = r.analysis?.face?.box;
+          const inFace = !!box && r.pixel.x >= box.x0 && r.pixel.x <= box.x1 && r.pixel.y >= box.y0 && r.pixel.y <= box.y1;
+          const gem = rollGem({ initialSeed: game.initialSeed, growthIndex: i, env: slot.env, processedAt: now, place, inFace });
+          r.pixel.gem = gem;
           pixels.push(r.pixel);
           milestones.push(...detectMilestones(r.pixel, r.freshAnalysis ? r.analysis : null, this.achieved));
         }
@@ -557,7 +564,7 @@ export class GameController {
 
   /** Stats of the creature being raised now (from its dots). */
   currentStats(): Stats | null {
-    return this.pixels.length ? statsFromColors(this.pixels.map((p) => p.color)) : null;
+    return this.pixels.length ? statsOf(this.pixels) : null;
   }
 
   /**

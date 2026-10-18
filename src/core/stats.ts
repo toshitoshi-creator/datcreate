@@ -1,5 +1,8 @@
 import { hexToHsl } from './color';
 import { COMPLETE_GROWTH_INDEX } from './constants';
+import { gemPoints } from './gems';
+import { hash32 } from './rng';
+import type { Pixel } from './types';
 
 /**
  * Battle stats derived only from a creature's dots (their colours and count).
@@ -10,7 +13,8 @@ import { COMPLETE_GROWTH_INDEX } from './constants';
  *  - すばやさ (speed)    : yellows / greens
  *  - まもり (defense)    : blues, and dark dots
  *  - 運 (luck)           : purples / pinks, and very light "sparkly" dots
- *  These four always add up to exactly 100.
+ *  These four add up to the creature's ability total (see abilityTotal):
+ *  about 100 on average for a finished creature, at most 150.
  *  - HP / スタミナ: grow with body size up to 200; warm colours lean to HP,
  *    cool colours to stamina.
  */
@@ -24,6 +28,29 @@ export interface Stats {
 }
 
 export const STAT_MAX = { hp: 200, stamina: 200 } as const;
+
+/** Ability total (the four core stats together). */
+export const TOTAL_MAX = 150;
+export const TOTAL_MIN = 40;
+/** Before precious dots: finished creatures average ~100 with them (scripts/calibrate-total.ts). */
+export const BASE_TOTAL = 78;
+/** Each creature's talent: a fixed -8..+8 from its seed. */
+export const TALENT_RANGE = 8;
+
+export function talentOf(firstPixelSeed: number): number {
+  return (hash32(firstPixelSeed, 'talent') % (2 * TALENT_RANGE + 1)) - TALENT_RANGE;
+}
+
+/** Base + talent + precious dots, within TOTAL_MIN..TOTAL_MAX. */
+export function abilityTotal(pixels: readonly Pick<Pixel, 'seed' | 'gem'>[]): number {
+  if (!pixels.length) return BASE_TOTAL;
+  return Math.max(TOTAL_MIN, Math.min(TOTAL_MAX, BASE_TOTAL + talentOf(pixels[0].seed) + gemPoints(pixels)));
+}
+
+/** Stats of a creature from its dots: colours give the leaning, talent and precious dots the total. */
+export function statsOf(pixels: readonly Pick<Pixel, 'color' | 'seed' | 'gem'>[]): Stats {
+  return statsFromColors(pixels.map((p) => p.color), abilityTotal(pixels));
+}
 
 export const STAT_LABEL: Record<keyof Stats, string> = {
   hp: 'HP',
@@ -56,7 +83,7 @@ export function apportion(weights: number[], total: number, min = 0): number[] {
   return out.map((v) => v + min);
 }
 
-export function statsFromColors(colors: readonly string[]): Stats {
+export function statsFromColors(colors: readonly string[], total = 100): Stats {
   const acc: Record<Core, number> = { strength: 0, defense: 0, speed: 0, luck: 0 };
   let warm = 0, cool = 0;
   for (const hex of colors) {
@@ -72,9 +99,9 @@ export function statsFromColors(colors: readonly string[]): Stats {
     else cool += chroma;
   }
   const n = colors.length;
-  // a small floor keeps every stat alive, then the four add up to exactly 100
+  // a small floor keeps every stat alive, then the four add up to exactly `total`
   const weights = CORE.map((k) => acc[k] + Math.max(0.5, n * 0.04));
-  const [strength, defense, speed, luck] = apportion(weights, 100, 4);
+  const [strength, defense, speed, luck] = apportion(weights, total, 4);
   const size = Math.min(1, n / (COMPLETE_GROWTH_INDEX + 1));
   // warm share, softened so HP / stamina lean rather than flip
   const tint = 0.5 + ((warm + cool > 0 ? warm / (warm + cool) : 0.5) - 0.5) * 0.6;

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { abilityTotal } from '../../src/core/stats';
 import { DAY_MS } from '../../src/core/constants';
 import { GameRepository } from '../../src/data/repository';
 import { resolveStyle } from '../../src/engine/gameController';
@@ -562,6 +563,6 @@ describe('GameController: battle reward', () => {
     const h = await makeHarness({ clock: new FakeClock(T0) });
     await h.controller.startNewGame();
     const s = h.controller.currentStats()!;
-    expect(s.strength + s.defense + s.speed + s.luck).toBe(100);
+    expect(s.strength + s.defense + s.speed + s.luck).toBe(abilityTotal(h.controller.pixels));
   });
 });

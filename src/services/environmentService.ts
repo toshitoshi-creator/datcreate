@@ -20,6 +20,15 @@ export class EnvironmentService {
 
   constructor(private readonly opts: EnvironmentServiceOptions) {}
 
+  /**
+   * A coarse place code (about 5 km cells) for the current position, or null.
+   * Only this number is used (for precious dots); coordinates are never stored.
+   */
+  placeCode(): number | null {
+    if (!this.coords) return null;
+    return Math.round(this.coords.lat * 20) * 7919 + Math.round(this.coords.lon * 20);
+  }
+
   /** Forget the in-memory position (e.g. when the user disables location). */
   clearLocation() {
     this.coords = null;

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { GEMS, GEM_ORDER } from '../core/gems';
 import { TIME_OF_DAY_LABEL, WEATHER_LABEL } from '../core/environment';
 import { elapsedParts, formatCountdown, timeOfDayFromHour } from '../core/time';
 import { activeBoost, nextSlotDueAt } from '../core/schedule';
@@ -54,6 +55,20 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
     };
   }, [controller]);
 
+  // precious dots: a count in the HUD, and a word when new ones are born
+  const gemCount = useMemo(() => controller.pixels.reduce((n, p) => n + (p.gem ? 1 : 0), 0), [controller, state.pixelCount]);
+  useEffect(
+    () =>
+      controller.onPixels(({ pixels, reason }) => {
+        if (reason === 'initial') return;
+        const born = pixels.filter((p) => p.gem);
+        if (!born.length) return;
+        const top = GEM_ORDER.find((k) => born.some((p) => p.gem === k))!;
+        showToast(born.length === 1 ? `✨ ${GEMS[top].icon} ${GEMS[top].name}のドットが生まれた！` : `✨ きらきらドットが${born.length}つ生まれていたよ（${GEMS[top].icon} ${GEMS[top].name}など）`);
+      }),
+    [controller],
+  );
+
   const game = state.game!;
   const el = elapsedParts(game.startedAt, now);
   const next = nextSlotDueAt(game);
@@ -72,6 +87,11 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
           <div className="age" data-testid="elapsed">
             {el.days}日 {el.hours}時間 経過
           </div>
+          {gemCount > 0 && (
+            <div className="hud-gems" data-testid="hud-gems">
+              ✨ きらきら {gemCount}
+            </div>
+          )}
           {state.completion !== 'growing' && <div className="done-pill" data-testid="complete-badge">完成</div>}
         </div>
         <nav className="hud-actions">

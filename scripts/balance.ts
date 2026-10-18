@@ -4,7 +4,7 @@
  *   npx vite-node scripts/balance.ts [creatures=60] [seedsPerPair=20]
  */
 import { simulateBattle } from '../src/core/battle';
-import { statsFromColors, type Stats } from '../src/core/stats';
+import { statsFromColors, statsOf, type Stats } from '../src/core/stats';
 import { growWildDot } from '../src/core/wild';
 
 const N = Number(process.argv[2] ?? 60);
@@ -13,7 +13,12 @@ const CORE = ['strength', 'defense', 'speed', 'luck'] as const;
 
 const t0 = Date.now();
 const pool: Stats[] = [];
-for (let k = 0; k < N; k++) pool.push(statsFromColors(growWildDot((k * 2654435761 + 17) >>> 0, 721).map((p) => p.color)));
+// EQUAL=1: everyone at total 100 (pure leaning balance); otherwise real totals with precious dots
+const EQUAL = process.env.EQUAL === '1';
+for (let k = 0; k < N; k++) {
+  const px = growWildDot((k * 2654435761 + 17) >>> 0, 721);
+  pool.push(EQUAL ? statsFromColors(px.map((p) => p.color)) : statsOf(px));
+}
 console.log(`grew ${N} creatures in ${Date.now() - t0} ms`);
 
 const wins = new Array(N).fill(0), games = new Array(N).fill(0);
@@ -35,7 +40,8 @@ const by: Record<string, number[]> = {};
 pool.forEach((s, i) => (by[top(s)] ??= []).push(rate[i]));
 for (const k of CORE) {
   const r = by[k] ?? [];
-  console.log(`${k.padEnd(9)} n=${String(r.length).padStart(3)} win=${r.length ? ((r.reduce((a, b) => a + b, 0) / r.length) * 100).toFixed(1) : '-'}%`);
+  const tt = pool.filter((s) => top(s) === k).map((s) => s.strength + s.defense + s.speed + s.luck);
+  console.log(`${k.padEnd(9)} n=${String(r.length).padStart(3)} win=${r.length ? ((r.reduce((a, b) => a + b, 0) / r.length) * 100).toFixed(1) : '-'}%  avg total ${tt.length ? (tt.reduce((a, b) => a + b, 0) / tt.length).toFixed(1) : '-'}`);
 }
 const corr = (xs: number[], ys: number[]) => {
   const mx = xs.reduce((a, b) => a + b) / xs.length, my = ys.reduce((a, b) => a + b) / ys.length;
@@ -43,6 +49,10 @@ const corr = (xs: number[], ys: number[]) => {
   xs.forEach((x, i) => { sxy += (x - mx) * (ys[i] - my); sxx += (x - mx) ** 2; syy += (ys[i] - my) ** 2; });
   return sxy / Math.sqrt(sxx * syy || 1);
 };
+{
+  const tot = pool.map((s) => s.strength + s.defense + s.speed + s.luck);
+  console.log(`corr total     ${corr(tot, rate).toFixed(2)}  range ${Math.min(...tot)}-${Math.max(...tot)}`);
+}
 for (const k of ['hp', 'stamina', ...CORE] as const) {
   const xs = pool.map((s) => s[k]);
   console.log(`corr ${k.padEnd(9)} ${corr(xs, rate).toFixed(2)}  range ${Math.min(...xs)}-${Math.max(...xs)}`);

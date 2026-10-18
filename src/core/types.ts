@@ -1,4 +1,5 @@
 import type { CreatureStyle } from './genome';
+import type { GemKind } from './gems';
 import type { Species } from './species';
 import type { TimeOfDay } from './time';
 
@@ -69,6 +70,11 @@ export interface Pixel {
   environmentSnapshotId: string | null;
   generatorVersion: number;
   envUsed: EnvUsed;
+  /**
+   * Precious dot (きらきらドット), decided once when the dot was made and
+   * stored. null = an ordinary dot; missing = made before precious dots existed.
+   */
+  gem?: GemKind | null;
 }
 
 export type FetchStatus = 'ok' | 'error' | 'timeout' | 'disabled' | 'denied' | 'unavailable';

@@ -1,6 +1,6 @@
 import { simulateBattle } from './battle';
 import { hash32, Rng } from './rng';
-import { statsFromColors, type Stats } from './stats';
+import { statsOf, type Stats } from './stats';
 import { growWildDot } from './wild';
 import type { Pixel } from './types';
 
@@ -118,7 +118,7 @@ export function makeRival(seed: number, rating: number): Rival {
   const r = new Rng(hash32(seed, 'rival'));
   const cands = Array.from({ length: RIVAL_CANDIDATES }, (_, i) => {
     const pixels = growWildDot(hash32(seed, `rival-${i}`), 721);
-    const stats = statsFromColors(pixels.map((p) => p.color));
+    const stats = statsOf(pixels);
     return { pixels, stats, power: powerOf(stats) };
   }).sort((a, b) => a.power - b.power);
   const pick = cands[Math.round(rivalStrength(rating) * (RIVAL_CANDIDATES - 1))];

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { simulateBattle, type BattleEvent, type BattleResult, type Side } from '../core/battle';
 import type { ItemDef } from '../core/items';
 import { freshSeed } from '../core/rng';
-import { statsFromColors, type Stats } from '../core/stats';
+import { statsOf, type Stats } from '../core/stats';
 import type { GameState, Pixel } from '../core/types';
 import { growWildDot } from '../core/wild';
 import type { GameController } from '../engine/gameController';
@@ -52,8 +52,8 @@ export function BattleScreen({ controller, game, onClose }: Props) {
   }, [wildSeed, myBase]);
   const them: Entry = { key: 'wild', name: 'やせいのドット', pixels: wildPixels };
 
-  const myStats = useMemo(() => (myPixels ? statsFromColors(myPixels.map((p) => p.color)) : null), [myPixels]);
-  const theirStats = useMemo(() => statsFromColors(wildPixels.map((p) => p.color)), [wildPixels]);
+  const myStats = useMemo(() => (myPixels ? statsOf(myPixels) : null), [myPixels]);
+  const theirStats = useMemo(() => statsOf(wildPixels), [wildPixels]);
 
   const [fight, setFight] = useState<{ result: BattleResult; shown: number; reward: ItemDef | null | undefined } | null>(null);
   const timer = useRef<ReturnType<typeof setInterval>>();
@@ -125,7 +125,7 @@ export function FighterCard({ entry, stats, testId }: { entry: Entry; stats: Sta
     <div className="fighter">
       <PixelThumb pixels={entry.pixels} size={120} />
       <div className="fighter-name">{entry.name}</div>
-      {stats ? <StatsCard stats={stats} testId={testId} /> : <div className="muted small">よみこみ中…</div>}
+      {stats ? <StatsCard stats={stats} testId={testId} pixels={entry.pixels} /> : <div className="muted small">よみこみ中…</div>}
     </div>
   );
 }

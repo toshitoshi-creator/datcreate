@@ -1,3 +1,4 @@
+import { GEMS } from '../core/gems';
 import { HEX_COLOR_RE } from '../core/color';
 import { SAVE_FORMAT, SCHEMA_VERSION } from '../core/constants';
 import { isSupportedGenerator } from '../core/generator';
@@ -91,6 +92,7 @@ export function validateSave(input: unknown): ValidationResult {
     if (!isNum(p.createdAt) || !isInt(p.seed) || !isInt(p.generatorVersion)) return fail(`pixels[${i}] の必須項目が不正です`);
     if (!(p.parentId === null || typeof p.parentId === 'string')) return fail(`pixels[${i}] の parentId が不正です`);
     if (!(p.environmentSnapshotId === null || typeof p.environmentSnapshotId === 'string')) return fail(`pixels[${i}] の environmentSnapshotId が不正です`);
+    if (!(p.gem === undefined || p.gem === null || (typeof p.gem === 'string' && p.gem in GEMS))) return fail(`pixels[${i}] の gem が不正です`);
     const e = p.envUsed;
     if (!isObj(e) || !TIME_OF_DAY.has(e.timeOfDay as string) || !WEATHER.has(e.weather as string) || !isNum(e.localHour) || !isNum(e.environmentInfluence) || !isNum(e.organicShapeBias)) {
       return fail(`pixels[${i}] の環境情報が不正です`);

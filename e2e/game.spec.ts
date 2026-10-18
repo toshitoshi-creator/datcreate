@@ -357,8 +357,13 @@ test('a small battle against a wild dot, with stats from colours and no names re
     return v.reduce((a, b) => a + b, 0);
   };
   await expect(page.getByTestId('their-stats')).toBeVisible();
-  expect(await sum('mine-stats')).toBe(100);
-  expect(await sum('their-stats')).toBe(100);
+  // the four stats add up to the ability total shown (at most 150)
+  for (const id of ['mine-stats', 'their-stats']) {
+    const total = Number(await page.getByTestId(id).getByTestId('stat-total').textContent());
+    expect(await sum(id)).toBe(total);
+    expect(total).toBeLessThanOrEqual(150);
+  }
+  await expect(page.getByTestId('their-stats').getByTestId('gem-row')).toBeVisible();
   expect(Number(await page.getByTestId('mine-stats').getByTestId('stat-hp').textContent())).toBeLessThanOrEqual(200);
   await expect(page.getByTestId('battle-screen')).not.toContainText(HIDDEN_WORDS);
   await page.screenshot({ path: 'test-results/shots/battle-pick.png' });

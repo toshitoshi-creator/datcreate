@@ -1260,3 +1260,37 @@ button {
 .center {
   text-align: center;
 }
+
+/* ---- precious dots ------------------------------------------------------------- */
+
+.stats-total {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.gem-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  justify-content: flex-end;
+}
+.gem-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.05);
+}
+.gem-chip.gem-gold {
+  border-color: rgba(245, 200, 76, 0.5);
+}
+.gem-chip.gem-diamond {
+  border-color: rgba(169, 240, 255, 0.6);
+  box-shadow: 0 0 8px rgba(169, 240, 255, 0.25);
+}
+.hud-gems {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #ffe9a8;
+}

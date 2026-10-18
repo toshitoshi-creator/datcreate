@@ -3,7 +3,7 @@ import { COMPLETE_GROWTH_INDEX, DAY_MS } from '../core/constants';
 import type { GameState, Pixel } from '../core/types';
 import type { GameController } from '../engine/gameController';
 import { drawThumbnail } from '../render/renderer';
-import { statsFromColors, type Stats } from '../core/stats';
+import { statsOf, type Stats } from '../core/stats';
 import { NameForm } from './NameForm';
 import { StatsCard } from './StatsCard';
 import { BattleScreen } from './BattleScreen';
@@ -239,12 +239,13 @@ function CollectionDetail({ game, number, controller, onDeleted, onRenamed, onBa
 
 function DetailStats({ controller, gameId }: { controller: GameController; gameId: string }) {
   const [stats, setStats] = useState<Stats | null>(null);
+  const [pixels, setPixels] = useState<Pixel[] | null>(null);
   useEffect(() => {
     let alive = true;
-    void controller.loadCollectionPixels(gameId).then((p) => alive && setStats(statsFromColors(p.map((x) => x.color))));
+    void controller.loadCollectionPixels(gameId).then((p) => alive && (setStats(statsOf(p)), setPixels(p)));
     return () => {
       alive = false;
     };
   }, [controller, gameId]);
-  return stats ? <StatsCard stats={stats} testId="collection-stats" /> : null;
+  return stats ? <StatsCard stats={stats} testId="collection-stats" pixels={pixels} /> : null;
 }
