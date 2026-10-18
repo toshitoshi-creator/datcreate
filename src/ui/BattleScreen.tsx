@@ -17,53 +17,50 @@ interface Entry {
 
 const STEP_MS = 650;
 
-/** A small, friendly battle. It never affects growth; the first win each day earns an item. */
-export function BattleScreen({ controller, onClose }: { controller: GameController; onClose: () => void }) {
-  const [collection, setCollection] = useState<GameState[]>([]);
-  const [loaded, setLoaded] = useState<Record<string, Pixel[]>>({});
-  const active = controller.pixels.length ? controller.pixels : null;
-  const [mine, setMine] = useState<string>(active ? 'active' : '');
-  const [theirs, setTheirs] = useState<string>('wild');
+interface Props {
+  controller: GameController;
+  /** The fighter: a creature from the collection, or the creature being raised when omitted. */
+  game?: GameState;
+  onClose: () => void;
+}
+
+/**
+ * A small, friendly battle against a wild dot. The fighter is chosen before
+ * opening this screen (the collection detail, or the creature being raised).
+ * It never affects growth; the first win each day earns an item.
+ */
+export function BattleScreen({ controller, game, onClose }: Props) {
+  const [archived, setArchived] = useState<Pixel[] | null>(null);
   const [wildSeed, setWildSeed] = useState(() => freshSeed());
 
   useEffect(() => {
-    void controller.listCollection().then((l) => {
-      setCollection(l);
-      if (!active && l[0]) setMine(l[0].gameId);
-    });
-  }, [controller]);
+    if (!game) return;
+    let alive = true;
+    void controller.loadCollectionPixels(game.gameId).then((p) => alive && setArchived(p));
+    return () => {
+      alive = false;
+    };
+  }, [controller, game?.gameId]);
 
-  const load = (gameId: string) => {
-    if (loaded[gameId]) return;
-    void controller.loadCollectionPixels(gameId).then((p) => setLoaded((m) => ({ ...m, [gameId]: p })));
-  };
-  useEffect(() => {
-    for (const id of [mine, theirs]) if (id && id !== 'active' && id !== 'wild') load(id);
-  }, [mine, theirs]);
+  const myPixels = game ? archived : controller.pixels.length ? controller.pixels : null;
+  const me: Entry | null = game || myPixels ? { key: game?.gameId ?? 'active', name: game ? game.name ?? 'なまえのない子' : 'いまの子', pixels: myPixels } : null;
 
-  const myBase = active ? controller.pixels.length : 721;
+  const myBase = game ? game.lastProcessedGrowthIndex + 1 : controller.pixels.length;
   const wildPixels = useMemo(() => {
     const n = Math.max(30, Math.min(721, Math.round(myBase * (0.85 + (wildSeed % 30) / 100))));
     return growWildDot(wildSeed, n);
   }, [wildSeed, myBase]);
+  const them: Entry = { key: 'wild', name: 'やせいのドット', pixels: wildPixels };
 
-  const entry = (key: string): Entry | null => {
-    if (key === 'active') return active ? { key, name: 'いまの子', pixels: active } : null;
-    if (key === 'wild') return { key, name: 'やせいのドット', pixels: wildPixels };
-    const g = collection.find((c) => c.gameId === key);
-    return g ? { key, name: g.name ?? 'なまえのない子', pixels: loaded[key] ?? null } : null;
-  };
-  const me = entry(mine);
-  const them = entry(theirs);
-  const myStats = useMemo(() => (me?.pixels ? statsFromColors(me.pixels.map((p) => p.color)) : null), [me?.pixels]);
-  const theirStats = useMemo(() => (them?.pixels ? statsFromColors(them.pixels.map((p) => p.color)) : null), [them?.pixels]);
+  const myStats = useMemo(() => (myPixels ? statsFromColors(myPixels.map((p) => p.color)) : null), [myPixels]);
+  const theirStats = useMemo(() => statsFromColors(wildPixels.map((p) => p.color)), [wildPixels]);
 
   const [fight, setFight] = useState<{ result: BattleResult; shown: number; reward: ItemDef | null | undefined } | null>(null);
   const timer = useRef<ReturnType<typeof setInterval>>();
   useEffect(() => () => clearInterval(timer.current), []);
 
   const start = () => {
-    if (!me || !them || !myStats || !theirStats) return;
+    if (!me || !myStats) return;
     const result = simulateBattle({ name: me.name, stats: myStats }, { name: them.name, stats: theirStats }, freshSeed());
     setFight({ result, shown: 0, reward: undefined });
     clearInterval(timer.current);
@@ -86,9 +83,6 @@ export function BattleScreen({ controller, onClose }: { controller: GameControll
     }
   }, [done]);
 
-  const opponents: { key: string; label: string }[] = [{ key: 'wild', label: 'やせいのドット' }, ...collection.filter((c) => c.gameId !== mine).map((c) => ({ key: c.gameId, label: c.name ?? 'なまえのない子' }))];
-  const fighters: { key: string; label: string }[] = [...(active ? [{ key: 'active', label: 'いまの子' }] : []), ...collection.filter((c) => c.gameId !== theirs).map((c) => ({ key: c.gameId, label: c.name ?? 'なまえのない子' }))];
-
   return (
     <div className="sheet" role="dialog" aria-label="対決" data-testid="battle-screen">
       <header className="sheet-header">
@@ -99,40 +93,28 @@ export function BattleScreen({ controller, onClose }: { controller: GameControll
         <span />
       </header>
       <div className="sheet-body">
-        {fight && me && them && myStats && theirStats ? (
-          <FightView me={me} them={them} myStats={myStats} theirStats={theirStats} fight={fight} onSkip={() => setFight((f) => (f ? { ...f, shown: f.result.events.length } : f))} onAgain={() => { setFight(null); if (theirs === 'wild') setWildSeed(freshSeed()); }} />
+        {fight && me && myStats ? (
+          <FightView me={me} them={them} myStats={myStats} theirStats={theirStats} fight={fight} onSkip={() => setFight((f) => (f ? { ...f, shown: f.result.events.length } : f))} onAgain={() => { setFight(null); setWildSeed(freshSeed()); }} />
         ) : !me ? (
-          <p className="muted">対決できる子がいません。育てている子か、図鑑の子が必要です。</p>
+          <p className="muted">対決できる子がいません。</p>
         ) : (
           <>
-            <p className="muted small">ドットの色でステータスが決まります。対決しても成長には影響しません。1日の最初の勝利で、アイテムを1つもらえます。</p>
-            <Picker title="あなたの子" options={fighters} value={mine} onChange={setMine} testId="pick-mine" />
-            <Picker title="あいて" options={opponents} value={theirs} onChange={(k) => { setTheirs(k); if (k === 'wild') setWildSeed(freshSeed()); }} testId="pick-theirs" />
+            <p className="muted small">あいては、やせいのドットです。ドットの色でステータスが決まります。対決しても成長には影響しません。1日の最初の勝利で、アイテムを1つもらえます。</p>
             <div className="versus">
               <FighterCard entry={me} stats={myStats} testId="mine-stats" />
               <div className="vs-mark">VS</div>
-              {them && <FighterCard entry={them} stats={theirStats} testId="their-stats" />}
+              <FighterCard entry={them} stats={theirStats} testId="their-stats" />
             </div>
-            <button className="btn primary wide" data-testid="start-battle" disabled={!myStats || !theirStats} onClick={start}>
+            <div className="btn-row center">
+              <button className="btn" data-testid="reroll-wild" onClick={() => setWildSeed(freshSeed())}>
+                ↻ ほかのやせいのドット
+              </button>
+            </div>
+            <button className="btn primary wide" data-testid="start-battle" disabled={!myStats} onClick={start}>
               たたかう！
             </button>
           </>
         )}
-      </div>
-    </div>
-  );
-}
-
-function Picker({ title, options, value, onChange, testId }: { title: string; options: { key: string; label: string }[]; value: string; onChange: (k: string) => void; testId: string }) {
-  return (
-    <div className="picker" data-testid={testId}>
-      <div className="picker-title">{title}</div>
-      <div className="chips">
-        {options.map((o) => (
-          <button key={o.key} className={`chip ${o.key === value ? 'selected' : ''}`} aria-pressed={o.key === value} onClick={() => onChange(o.key)}>
-            {o.label}
-          </button>
-        ))}
       </div>
     </div>
   );

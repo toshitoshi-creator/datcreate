@@ -239,14 +239,24 @@ test('after 30 days a finished creature goes to the collection and a new one sta
   await expect(page.getByTestId('start-button')).toBeVisible();
   await expect(page.getByTestId('start-open-collection')).toHaveText('▦ 図鑑を見る（1）');
   // battles are also available from the start screen, with collection creatures
+  // battles start from the list -> detail -> "fight with this dot", against a wild dot
   await page.getByTestId('start-open-battle').click();
-  await expect(page.getByTestId('pick-mine')).toContainText('もちまる');
+  await expect(page.getByTestId('collection-hint')).toContainText('対決させたい子をえらんでね（1体）');
+  await page.getByTestId('collection-item').first().click();
+  await page.getByTestId('battle-with').click();
+  await expect(page.getByTestId('battle-screen')).toContainText('もちまる');
+  await expect(page.getByTestId('battle-screen')).toContainText('やせいのドット');
+  await expect(page.getByTestId('mine-stats')).toBeVisible();
   await expect(page.getByTestId('their-stats')).toBeVisible();
+  await expect(page.getByTestId('pick-mine')).toHaveCount(0);
   await page.getByTestId('start-battle').click();
   await page.getByTestId('skip-battle').click();
   await expect(page.getByTestId('battle-result')).toContainText(/かち|まけ|ひきわけ/);
-  await page.getByTestId('close-battle').click();
-  await page.getByTestId('close-battle').click();
+  await page.getByTestId('close-battle').click(); // result -> setup
+  await page.getByTestId('close-battle').click(); // setup -> detail
+  await expect(page.getByTestId('collection-detail')).toBeVisible();
+  await page.getByTestId('close-collection').click(); // detail -> list
+  await page.getByTestId('close-collection').click(); // list -> start
   await expect(page.getByTestId('start-button')).toBeVisible();
   await page.getByTestId('style-random').click();
   await page.getByTestId('start-button').click();
@@ -335,4 +345,49 @@ test('a small battle against a wild dot, with stats from colours and no names re
 test('production build exposes no time-travel controls', async ({ page }) => {
   await startGame(page);
   await expect(page.locator('.dev-panel')).toHaveCount(0);
+});
+
+test('a collection of 120 creatures: a light list, detail, and a battle from the detail', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByTestId('start-button')).toBeVisible();
+  // fill the collection directly: 120 finished creatures (copies of one grown individual)
+  await page.evaluate(async () => {
+    const db: IDBDatabase = await new Promise((res, rej) => {
+      const r = indexedDB.open('dot-life');
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+    const tx = db.transaction(['games', 'pixels'], 'readwrite');
+    const now = Date.now();
+    for (let k = 0; k < 120; k++) {
+      const gameId = `bulk-${k}`;
+      const startedAt = now - 40 * 86_400_000;
+      tx.objectStore('games').put({ gameId, startedAt, lastProcessedGrowthIndex: 59, schemaVersion: 1, generatorVersion: 3, initialSeed: k + 1, createdAt: startedAt, updatedAt: now, lastObservedAt: now, archivedAt: now - k * 1000, name: `ドット${120 - k}号` });
+      for (let i = 0; i < 60; i++) {
+        const x = (i % 8) - 4, y = Math.floor(i / 8) - 4;
+        tx.objectStore('pixels').put({ id: `${gameId}:${i}`, gameId, growthIndex: i, x, y, color: ['#ff8a7a', '#ffd166', '#7ad1ff', '#c49bff', '#8be0b0', '#3a3f5c'][(k + i) % 6], createdAt: startedAt + i * 3_600_000, generatorVersion: 3, envUsed: null, environmentSnapshotId: null });
+      }
+    }
+    await new Promise((res, rej) => {
+      tx.oncomplete = res;
+      tx.onerror = () => rej(tx.error);
+    });
+  });
+  await page.reload();
+  await page.getByTestId('start-open-battle').click();
+  await expect(page.getByTestId('collection-hint')).toContainText('120体');
+  await expect(page.getByTestId('collection-item')).toHaveCount(120);
+  await page.screenshot({ path: 'test-results/shots/collection-120.png' });
+  const last = page.getByTestId('collection-item').last();
+  await last.scrollIntoViewIfNeeded();
+  await expect(last).toContainText('ドット1号');
+  await last.click();
+  await expect(page.getByTestId('detail-name')).toHaveText('ドット1号');
+  await page.screenshot({ path: 'test-results/shots/collection-detail-battle.png' });
+  await page.getByTestId('battle-with').click();
+  await expect(page.getByTestId('battle-screen')).toContainText('ドット1号');
+  await page.getByTestId('reroll-wild').click();
+  await page.getByTestId('start-battle').click();
+  await page.getByTestId('skip-battle').click();
+  await expect(page.getByTestId('battle-result')).toContainText(/かち|まけ|ひきわけ/);
 });

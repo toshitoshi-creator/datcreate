@@ -609,8 +609,25 @@ button {
   padding: 0;
   margin: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 8px;
+}
+.collection-grid .collection-card {
+  padding: 8px 6px;
+  gap: 2px;
+}
+.collection-grid .collection-name {
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.card-meta {
+  white-space: nowrap;
+  font-size: 11px;
+}
+.collection-hint {
+  margin: 0 0 10px;
 }
 .collection-card {
   width: 100%;

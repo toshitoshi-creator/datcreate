@@ -38,7 +38,7 @@ function Game({ services }: { services: AppServices }) {
   if (state.status === 'error') return <ErrorView message={state.error ?? '不明なエラー'} />;
   if (state.status === 'no-game') {
     if (screen === 'collection') return <CollectionScreen controller={services.controller} onClose={() => setScreen('main')} />;
-    if (screen === 'battle') return <BattleScreen controller={services.controller} onClose={() => setScreen('main')} />;
+    if (screen === 'battle') return <CollectionScreen controller={services.controller} forBattle onClose={() => setScreen('main')} />;
     return (
       <StartScreen
         controller={services.controller}

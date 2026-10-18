@@ -6,18 +6,33 @@ import { drawThumbnail } from '../render/renderer';
 import { statsFromColors, type Stats } from '../core/stats';
 import { NameForm } from './NameForm';
 import { StatsCard } from './StatsCard';
+import { BattleScreen } from './BattleScreen';
 
 const fmt = new Intl.DateTimeFormat('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' });
 
-/** Creatures the player has finished and put away. Read-only views of stored dots. */
-export function CollectionScreen({ controller, onClose }: { controller: GameController; onClose: () => void }) {
+interface Props {
+  controller: GameController;
+  onClose: () => void;
+  /** Opened to pick a creature for a battle: shows a hint above the list. */
+  forBattle?: boolean;
+}
+
+/**
+ * Creatures the player has finished and put away. The list stays light for
+ * hundreds of entries (small cards, thumbnails drawn only when scrolled into
+ * view); tapping one opens its detail, where it can be sent into a battle.
+ */
+export function CollectionScreen({ controller, onClose, forBattle }: Props) {
   const [items, setItems] = useState<GameState[] | null>(null);
   const [open, setOpen] = useState<GameState | null>(null);
+  const [battling, setBattling] = useState(false);
 
   const reload = () => controller.listCollection().then(setItems).catch(() => setItems([]));
   useEffect(() => {
     void reload();
   }, [controller]);
+
+  if (open && battling) return <BattleScreen controller={controller} game={open} onClose={() => setBattling(false)} />;
 
   return (
     <div className="sheet" role="dialog" aria-label="図鑑" data-testid="collection-screen">
@@ -38,6 +53,7 @@ export function CollectionScreen({ controller, onClose }: { controller: GameCont
               setOpen(g);
               void reload();
             }}
+            onBattle={() => setBattling(true)}
             onDeleted={() => {
               setOpen(null);
               void reload();
@@ -49,34 +65,47 @@ export function CollectionScreen({ controller, onClose }: { controller: GameCont
             <p className="muted small">30日育てて完成した子を「図鑑にしまう」と、ここに残ります。</p>
           </div>
         ) : (
+          <>
+          <p className="muted small collection-hint" data-testid="collection-hint">
+            {forBattle ? '対決させたい子をえらんでね（' : '全'}{items.length.toLocaleString()}{forBattle ? '体）' : '体 ・ タップすると詳しく見られます'}
+          </p>
           <ul className="collection-grid" data-testid="collection-list">
             {items.map((g, i) => (
               <li key={g.gameId}>
                 <button className="collection-card" onClick={() => setOpen(g)} data-testid="collection-item">
-                  <Thumb controller={controller} game={g} size={150} />
+                  <Thumb controller={controller} game={g} size={96} lazy />
                   <span className="collection-name" data-testid="collection-name">{displayName(g, items.length - i)}</span>
-                  <span className="muted small">No.{items.length - i}</span>
-                  <span className="muted small">{(g.lastProcessedGrowthIndex + 1).toLocaleString()} dots</span>
+                  <span className="muted small card-meta">No.{items.length - i}</span>
+                  <span className="muted small card-meta">{(g.lastProcessedGrowthIndex + 1).toLocaleString()} dots</span>
                 </button>
               </li>
             ))}
           </ul>
+          </>
         )}
       </div>
     </div>
   );
 }
 
-function Thumb({ controller, game, size }: { controller: GameController; game: GameState; size: number }) {
+function Thumb({ controller, game, size, lazy }: { controller: GameController; game: GameState; size: number; lazy?: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const [pixels, setPixels] = useState<Pixel[] | null>(null);
+  const [visible, setVisible] = useState(!lazy || typeof IntersectionObserver === 'undefined');
   useEffect(() => {
+    if (visible || !ref.current) return;
+    const io = new IntersectionObserver((es) => es.some((e) => e.isIntersecting) && setVisible(true), { rootMargin: '200px' });
+    io.observe(ref.current);
+    return () => io.disconnect();
+  }, [visible]);
+  useEffect(() => {
+    if (!visible) return;
     let alive = true;
     void controller.loadCollectionPixels(game.gameId).then((p) => alive && setPixels(p));
     return () => {
       alive = false;
     };
-  }, [controller, game.gameId]);
+  }, [controller, game.gameId, visible]);
   useEffect(() => {
     if (ref.current && pixels) drawThumbnail(ref.current, pixels, pixels.length, { outline: true, maxScale: size > 200 ? 24 : 12 });
   }, [pixels, size]);
@@ -94,9 +123,10 @@ interface DetailProps {
   controller: GameController;
   onDeleted: () => void;
   onRenamed: (g: GameState) => void;
+  onBattle: () => void;
 }
 
-function CollectionDetail({ game, number, controller, onDeleted, onRenamed }: DetailProps) {
+function CollectionDetail({ game, number, controller, onDeleted, onRenamed, onBattle }: DetailProps) {
   const [confirm, setConfirm] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +154,9 @@ function CollectionDetail({ game, number, controller, onDeleted, onRenamed }: De
       )}
       <Thumb controller={controller} game={game} size={Math.min(340, (globalThis.innerWidth || 360) - 32)} />
       <DetailStats controller={controller} gameId={game.gameId} />
+      <button className="btn primary wide" data-testid="battle-with" onClick={onBattle}>
+        ⚔ このドットで戦う
+      </button>
       <dl className="detail-facts">
         <div>
           <dt>ドット</dt>
