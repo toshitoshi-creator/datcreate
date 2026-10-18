@@ -33,7 +33,7 @@ describe('GameController: time-based growth', () => {
     expect(h.controller.getState().pixelCount).toBe(25);
   });
 
-  it('30 days -> 721 dots; growth pauses for the choice, and continues beyond 30 days when chosen', async () => {
+  it('30 days -> 721 dots; growth keeps going past 30 days, but the abilities stay as they were at 30 days', async () => {
     const h = await makeHarness({ clock: new FakeClock(T0) });
     await h.controller.startNewGame();
     h.clock.advance(29 * DAY_MS);
@@ -43,12 +43,20 @@ describe('GameController: time-based growth', () => {
     await h.controller.checkGrowth();
     expect(h.controller.getState().pixelCount).toBe(721);
     expect(h.controller.getState().completion).toBe('complete');
+    const final = h.controller.currentStats();
     h.clock.advance(5 * DAY_MS + 30 * 60_000);
     await h.controller.checkGrowth();
-    expect(h.controller.getState().pixelCount).toBe(721); // waiting for the player's choice
+    // left alone (no choice made): it keeps getting bigger
+    expect(h.controller.getState().pixelCount).toBe(721 + 120);
+    expect(h.controller.getState().completion).toBe('complete');
+    expect(h.controller.pixels.slice(721).every((p) => p.gem === null)).toBe(true);
+    expect(h.controller.currentStats()).toEqual(final);
     await h.controller.continueGrowing();
     expect(h.controller.getState().completion).toBe('continuing');
-    expect(h.controller.getState().pixelCount).toBe(721 + 120); // missed time caught up
+    h.clock.advance(DAY_MS);
+    await h.controller.checkGrowth();
+    expect(h.controller.getState().pixelCount).toBe(721 + 144);
+    expect(h.controller.currentStats()).toEqual(final);
   });
 
   it('offline growth is applied on the next launch (restart with a later clock)', async () => {
@@ -392,7 +400,7 @@ describe('GameController: completion & collection', () => {
     expect(h.controller.getState().pixelCount).toBe(1);
     const list = await h.controller.listCollection();
     expect(list.map((g) => g.gameId)).toEqual([oldId]);
-    expect(list[0].lastProcessedGrowthIndex).toBe(720);
+    expect(list[0].lastProcessedGrowthIndex).toBe(744); // 31 days: archived as big as it had grown
     expect(list[0].name).toBe('ぷに');
     expect(fingerprint(await h.controller.loadCollectionPixels(oldId))).toBe(finished);
 

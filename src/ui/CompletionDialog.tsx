@@ -10,7 +10,7 @@ interface Props {
   onContinue: () => Promise<void>;
 }
 
-/** Shown once a creature reaches 30 days. Growth is paused until the player chooses. */
+/** Shown once a creature reaches 30 days. Abilities are final from here; dots keep coming meanwhile. */
 export function CompletionDialog({ count, gift, suggestName, onSave, onContinue }: Props) {
   const [step, setStep] = useState<'choose' | 'name'>('choose');
   const [suggestion] = useState(() => suggestName()); // requested once
@@ -22,7 +22,13 @@ export function CompletionDialog({ count, gift, suggestName, onSave, onContinue 
         <h2>{step === 'choose' ? '完成しました' : 'この子に名前をつけましょう'}</h2>
         {step === 'choose' ? (
           <>
-            <p>{count.toLocaleString()}個のドットでできた姿になりました。新しい子を育てますか？</p>
+            <p>
+              30日をむかえて、のうりょくが決まりました。新しい子を育てますか？
+              <span className="muted small" data-testid="dot-count-now"> （いま {count.toLocaleString()} ドット）</span>
+            </p>
+            <p className="muted small" data-testid="keeps-growing-note">
+              このままにしておくとドットは増え続けて、どんどん大きくなります（のうりょくは30日目のまま変わりません）。
+            </p>
             {gift && gift.length > 0 && (
               <div className="gift" data-testid="gift">
                 <div className="gift-title">お礼のプレゼントをもらったよ</div>
@@ -58,7 +64,7 @@ export function CompletionDialog({ count, gift, suggestName, onSave, onContinue 
                 このまま育て続ける
               </button>
             </div>
-            <p className="muted small">図鑑にしまった子は、この姿のまま残ります。育て続けても、あとで設定から図鑑にしまえます。</p>
+            <p className="muted small">図鑑にしまった子は、しまったときの姿のまま残ります。育て続けても、あとで設定から図鑑にしまえます。</p>
           </>
         ) : (
           <NameForm initial={suggestion} submitLabel="図鑑に保存して、新しい子を育てる" onSubmit={onSave} onCancel={() => setStep('choose')} cancelLabel="戻る" />

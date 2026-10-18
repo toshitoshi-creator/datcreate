@@ -1,3 +1,4 @@
+import { COMPLETE_GROWTH_INDEX } from './constants';
 import { hash32 } from './rng';
 import type { EnvUsed } from './types';
 
@@ -69,7 +70,8 @@ export function placeLuck(initialSeed: number, place: number | null): number {
 }
 
 export function rollGem(c: GemContext): GemKind | null {
-  if (c.inFace || c.growthIndex < 30) return null;
+  // abilities are fixed at completion (30 days), so later dots never turn precious
+  if (c.inFace || c.growthIndex < 30 || c.growthIndex > COMPLETE_GROWTH_INDEX) return null;
   const luck = launchLuck(c.initialSeed, c.processedAt) * placeLuck(c.initialSeed, c.place);
   const rates = gemRates(c.env);
   let u = unit(hash32(c.initialSeed, c.growthIndex, c.processedAt, c.place ?? 'none', 'gem'));

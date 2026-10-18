@@ -65,9 +65,6 @@ export function completionOf(game: GameState | null): Completion {
 }
 
 /** Last slot that may be generated now: growth pauses at completion until the player decides. */
-function growthCap(game: GameState): number {
-  return game.keepGrowing ? Infinity : COMPLETE_GROWTH_INDEX;
-}
 
 export type PixelReason = 'initial' | 'growth' | 'catchup';
 export interface PixelEvent {
@@ -269,7 +266,7 @@ export class GameController {
   /** Cheap check used by the display timer. */
   isGrowthDue(now = this.deps.clock.now()): boolean {
     const g = this.state.game;
-    return !!g && this.state.status === 'ready' && Math.min(growthCap(g), dueIndexAt(g, now)) > g.lastProcessedGrowthIndex;
+    return !!g && this.state.status === 'ready' && dueIndexAt(g, now) > g.lastProcessedGrowthIndex;
   }
 
   /** Generate and persist every due slot. Safe to call concurrently. */
@@ -310,7 +307,8 @@ export class GameController {
       this.setState({ clockWarning: false });
     }
 
-    const due = Math.min(growthCap(game), dueIndexAt(game, now));
+    // growth never pauses: past 30 days the body keeps getting bigger (abilities stay as at 30 days)
+    const due = dueIndexAt(game, now);
     const last = game.lastProcessedGrowthIndex;
     if (due <= last) return 0;
 

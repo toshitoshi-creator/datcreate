@@ -52,13 +52,17 @@ test('30 days -> 721 dots, keeps growing afterwards, offline growth applied on r
   await expect(page.getByTestId('completion-dialog')).toBeVisible();
   await page.waitForTimeout(3000);
   await page.screenshot({ path: 'test-results/shots/day30.png' });
-  // "close" the app (reload) and come back later: still waiting for the choice
+  // "close" the app (reload) and come back later without choosing: it kept growing,
+  // and the choice is still offered
   await jump(page, 48 * HOUR);
   await page.reload();
-  await expect(count(page)).toHaveText('721');
-  await page.getByTestId('keep-growing').click();
   await expect(count(page)).toHaveText('769');
+  await expect(page.getByTestId('completion-dialog')).toBeVisible();
+  await expect(page.getByTestId('keeps-growing-note')).toContainText('のうりょくは30日目のまま');
+  await page.getByTestId('keep-growing').click();
   await expect(page.getByTestId('completion-dialog')).toHaveCount(0);
+  await jump(page, 2 * HOUR);
+  await expect(count(page)).toHaveText('771');
 });
 
 test('reload keeps positions and colours identical, and history persists', async ({ page }) => {

@@ -47,9 +47,14 @@ export function abilityTotal(pixels: readonly Pick<Pixel, 'seed' | 'gem'>[]): nu
   return Math.max(TOTAL_MIN, Math.min(TOTAL_MAX, BASE_TOTAL + talentOf(pixels[0].seed) + gemPoints(pixels)));
 }
 
-/** Stats of a creature from its dots: colours give the leaning, talent and precious dots the total. */
-export function statsOf(pixels: readonly Pick<Pixel, 'color' | 'seed' | 'gem'>[]): Stats {
-  return statsFromColors(pixels.map((p) => p.color), abilityTotal(pixels));
+/**
+ * Stats of a creature from its dots: colours give the leaning, talent and
+ * precious dots the total. Only the dots up to completion (30 days, 721 dots)
+ * count, so a creature kept growing past it gets bigger but not stronger.
+ */
+export function statsOf(pixels: readonly Pick<Pixel, 'color' | 'seed' | 'gem' | 'growthIndex'>[]): Stats {
+  const counted = pixels.filter((p) => p.growthIndex <= COMPLETE_GROWTH_INDEX);
+  return statsFromColors(counted.map((p) => p.color), abilityTotal(counted));
 }
 
 export const STAT_LABEL: Record<keyof Stats, string> = {

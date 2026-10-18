@@ -1,6 +1,7 @@
 import { GEMS, GEM_ORDER, countGems } from '../core/gems';
 import { STAT_LABEL, STAT_MAX, TOTAL_MAX, type Stats } from '../core/stats';
 import type { Pixel } from '../core/types';
+import { COMPLETE_GROWTH_INDEX } from '../core/constants';
 
 const CORE = ['strength', 'defense', 'speed', 'luck'] as const;
 
@@ -19,6 +20,9 @@ export function StatsCard({ stats, testId, pixels }: { stats: Stats; testId?: st
         のうりょく合計 <b className="stats-total" data-testid="stat-total">{total}</b> / {TOTAL_MAX}
       </div>
       {pixels && <GemRow pixels={pixels} />}
+      {pixels && pixels.length > COMPLETE_GROWTH_INDEX + 1 && (
+        <div className="stats-note muted" data-testid="stats-final">のうりょくは30日目（721ドット）で決まっています</div>
+      )}
     </div>
   );
 }
