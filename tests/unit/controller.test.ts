@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DAY_MS } from '../../src/core/constants';
 import { GameRepository } from '../../src/data/repository';
 import { resolveStyle } from '../../src/engine/gameController';
+import { COOL_SPECIES, CUTE_SPECIES } from '../../src/core/species';
 import { FakeClock, HOUR_MS, T0, failingProvider, fakeGeolocation, makeHarness, okProvider } from '../helpers';
 
 const fingerprint = (ps: { x: number; y: number; color: string; growthIndex: number }[]) =>
@@ -327,14 +328,48 @@ describe('GameController: creature style', () => {
     expect(['cute', 'ghost']).toContain(h.controller.getState().game?.style);
   });
 
-  it("the 'cute' / 'cool' choices sometimes grow into the matching ghost, never the other family", () => {
-    const seen = { cute: new Set<string>(), cool: new Set<string>() };
-    for (let seed = 1; seed <= 200; seed++) {
-      seen.cute.add(resolveStyle('cute', seed));
-      seen.cool.add(resolveStyle('cool', seed));
+  it("'cute' / 'cool' pick a look within their own family; every animal is reachable", () => {
+    const cute = new Set<string>(), cool = new Set<string>(), random = new Set<string>();
+    for (let seed = 1; seed <= 2000; seed++) {
+      const a = resolveStyle('cute', seed), b = resolveStyle('cool', seed), c = resolveStyle('random', seed);
+      expect(['cute', 'ghost']).toContain(a.style);
+      if (a.species) expect(CUTE_SPECIES).toContain(a.species);
+      expect(['cool', 'ghostCool']).toContain(b.style);
+      if (b.species) expect(COOL_SPECIES).toContain(b.species);
+      cute.add(a.species ?? a.style);
+      cool.add(b.species ?? b.style);
+      random.add(c.species ?? c.style);
     }
-    expect([...seen.cute].sort()).toEqual(['cute', 'ghost']);
-    expect([...seen.cool].sort()).toEqual(['cool', 'ghostCool']);
+    expect([...cute].sort()).toEqual([...CUTE_SPECIES, 'cute', 'ghost'].sort());
+    expect([...cool].sort()).toEqual([...COOL_SPECIES, 'cool', 'ghostCool'].sort());
+    expect(random.size).toBe(cute.size + cool.size);
+  });
+
+  it('the animal look is stored and survives restart and export/import', async () => {
+    const clock = new FakeClock(T0);
+    const h = await makeHarness({ clock });
+    let seed = 0;
+    // find a start that becomes an animal (seeds are random per game)
+    do {
+      if (seed++) await h.controller.resetGame();
+      await h.controller.startNewGame('cute');
+    } while (!h.controller.getState().game?.species && seed < 50);
+    const species = h.controller.getState().game!.species!;
+    expect(CUTE_SPECIES).toContain(species);
+    clock.advance(3 * DAY_MS);
+    await h.controller.checkGrowth();
+    const text = await h.controller.exportSaveText();
+    expect(JSON.parse(text).game.species).toBe(species);
+    h.repo.close();
+    const b = await makeHarness({ clock, factory: h.factory, storage: h.storage });
+    expect(b.controller.getState().game?.species).toBe(species);
+    const before = fingerprint(b.controller.pixels);
+    await b.controller.resetGame();
+    await b.controller.importSaveText(text);
+    expect(fingerprint(b.controller.pixels)).toBe(before);
+    const bad = JSON.parse(text);
+    bad.game.species = 'unicorn';
+    await expect(b.controller.importSaveText(JSON.stringify(bad))).rejects.toThrow();
   });
 });
 

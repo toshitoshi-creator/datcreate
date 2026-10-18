@@ -4,7 +4,7 @@ import type { FetchStatus } from '../core/types';
 import type { ControllerState } from '../engine/gameController';
 import { useSettings } from './hooks';
 import { NameForm } from './NameForm';
-import { STYLE_LABEL } from './styleLabels';
+import { lookLabel } from './styleLabels';
 import type { AppServices } from './services';
 
 const STATUS_LABEL: Record<FetchStatus, string> = {
@@ -75,7 +75,7 @@ export function SettingsScreen({ services, state, onClose }: Props) {
       <div className="sheet-body">
         <Section title="この個体">
           <Row label="タイプ" hint="タイプは生まれたときに決まり、途中で変わりません。">
-            <span data-testid="creature-style">{STYLE_LABEL[state.game?.style ?? 'cute']}</span>
+            <span data-testid="creature-style">{state.game ? lookLabel(state.game) : ''}</span>
           </Row>
           {state.completion !== 'growing' && (
             <Row label="図鑑にしまう" hint="名前をつけて今の姿のまま図鑑に保存し、新しい子を育てます。">

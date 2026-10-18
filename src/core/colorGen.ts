@@ -67,6 +67,8 @@ export function generateColor(
   inFace: boolean,
   /** v3: neighbours to ignore when inheriting colour (painted facial dots). */
   skipNeighbour?: (x: number, y: number) => boolean,
+  /** Target colour for species markings at this cell. */
+  markHsl?: Hsl,
 ): Hsl {
   const w = env.environmentInfluence;
   // shifts of individual dots; v2 keeps faces readable by calming the face area
@@ -140,7 +142,9 @@ export function generateColor(
 
   // weak facial colour accents (probabilistic) ----------------------------
   if (accent && rng.chance(tune.accentBase + tune.accentGain * faceStrength * env.organicShapeBias)) {
-    if ((accent === 'ink' && genome.irisHue === undefined) || accent === 'mouth') {
+    if ((accent === 'mark' || accent === 'markDot') && markHsl) {
+      c = { h: markHsl.h + rng.gauss() * 2, s: markHsl.s + rng.gauss() * 0.015, l: markHsl.l + rng.gauss() * 0.015 };
+    } else if ((accent === 'ink' && genome.irisHue === undefined) || accent === 'mouth') {
       c = { h: c.h, s: rng.range(0.25, 0.4), l: rng.range(0.13, 0.18) };
     } else if (accent === 'ink') {
       c = { h: genome.irisHue! + rng.gauss() * 3, s: rng.range(0.8, 0.95), l: rng.range(0.56, 0.62) }; // glowing eyes

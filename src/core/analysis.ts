@@ -1,4 +1,5 @@
 import type { Genome, LimbGene } from './genome';
+import type { Hsl } from './color';
 import { cellKey, type CellInfo } from './model';
 import { TUNINGS, type Tuning } from './tuning';
 
@@ -12,7 +13,7 @@ export interface Hole {
   keys: number[];
 }
 
-export type AccentKind = 'eye' | 'eyeRim' | 'nose' | 'cheek' | 'shine' | 'ink' | 'mouth' | 'fang' | 'crest';
+export type AccentKind = 'eye' | 'eyeRim' | 'nose' | 'cheek' | 'shine' | 'ink' | 'mouth' | 'fang' | 'crest' | 'mark' | 'markDot';
 
 /**
  * Weak tendencies for future placement. These are *not* parts: nothing is
@@ -30,6 +31,8 @@ export interface FaceZones {
   hasNose: boolean;
   /** Painted-face cells that lie in an enclosed gap (v3: free to fill in). */
   enclosed: Set<number>;
+  /** Target colour of 'mark' / 'markDot' cells (species markings). */
+  markColor: Map<number, Hsl>;
   /** Rough box around the facial features (for calmer face colouring). */
   box: { x0: number; x1: number; y0: number; y1: number };
 }
@@ -47,6 +50,8 @@ export interface FacePlan {
   /** 'cool' style extras (v3). */
   fang?: [number, number] | null;
   crest?: [number, number][];
+  /** Species markings (muzzle, beak, belly, stripes, ...) as cell lists. */
+  marks?: { cells: [number, number][]; color: Hsl; dot: boolean }[];
 }
 
 export const FACE_PLAN_MAX_EPOCH = 700;
@@ -161,7 +166,29 @@ export function buildFuturePlan(genome: Genome, t: Tuning): FacePlan | null {
     const x0 = Math.round(cx), y0 = Math.round(ey - 0.42 * hh);
     for (const [dx, dy] of [[0, -1], [-1, 0], [0, 0], [1, 0], [0, 1]] as const) crest.push([x0 + dx, y0 + dy]);
   }
-  return genome.hasFang !== undefined || crest.length ? { epoch: 24, eyes, mouth, nose: null, fang, crest } : { epoch: 24, eyes, mouth, nose: null };
+  const plan: FacePlan = genome.hasFang !== undefined || crest.length ? { epoch: 24, eyes, mouth, nose: null, fang, crest } : { epoch: 24, eyes, mouth, nose: null };
+  if (genome.marks?.length) {
+    plan.marks = genome.marks.map((m) => {
+      const mx = m.cx * Rb, my = m.cy * Rb, rx = Math.max(0.5, m.rx * Rb), ry = Math.max(0.5, m.ry * Rb);
+      const cells: [number, number][] = [];
+      for (let y = Math.floor(my - ry); y <= Math.ceil(my + ry); y++) {
+        for (let x = Math.floor(mx - rx); x <= Math.ceil(mx + rx); x++) {
+          if (((x - mx) / rx) ** 2 + ((y - my) / ry) ** 2 <= 1) cells.push([x, y]);
+        }
+      }
+      if (!cells.length) cells.push([Math.round(mx), Math.round(my)]);
+      return { cells, color: { h: m.h, s: m.s, l: m.l }, dot: !!m.dot };
+    });
+  }
+  return plan;
+}
+
+/**
+ * Face zones straight from the plans, before any shape analysis exists (the
+ * first few dots). Used for species, whose faces sit near the first dot.
+ */
+export function earlyFaceZones(plans: readonly FacePlan[], genome: Genome, size: number, occupied: (x: number, y: number) => boolean, t: Tuning): FaceZones {
+  return buildFaceZones(plans, genome, size, [], occupied, t);
 }
 
 function buildFaceZones(
@@ -190,8 +217,17 @@ function buildFaceZones(
   };
   const pupilEyes = genome.eyeStyle === 'bright' && t.brightPupil;
   // Older plans keep a weaker tendency; the newest one overrides overlaps.
+  const markColor = new Map<number, Hsl>();
   plans.forEach((plan, i) => {
     const st = i === plans.length - 1 ? strength : strength * 0.6;
+    // species markings first, so eyes / mouth painted afterwards take precedence
+    for (const m of plan.marks ?? []) {
+      for (const [x, y] of m.cells) {
+        const k = cellKey(x, y);
+        accent.set(k, m.dot ? 'markDot' : 'mark');
+        markColor.set(k, m.color);
+      }
+    }
     eyeCount += plan.eyes.length;
     const asp = genome.eyeAspect ?? t.eyeAspect;
     const tilt = genome.eyeTilt ?? 0;
@@ -289,7 +325,7 @@ function buildFaceZones(
     for (const h of holes) for (const k of h.keys) holeKeys.add(k);
     for (const k of accent.keys()) if (holeKeys.has(k)) enclosed.add(k);
   }
-  return { strength, hollow, accent, eyeCount, eyesFromHoles, mouthFromHole, hasNose, enclosed, box: { x0: bx0, x1: bx1, y0: by0, y1: by1 } };
+  return { strength, hollow, accent, eyeCount, eyesFromHoles, mouthFromHole, hasNose, enclosed, markColor, box: { x0: bx0, x1: bx1, y0: by0, y1: by1 } };
 }
 
 export interface LimbState {

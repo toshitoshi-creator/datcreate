@@ -4,8 +4,8 @@ import type { GameController } from '../engine/gameController';
 type Choice = 'cute' | 'cool' | 'random';
 
 const CHOICES: { value: Choice; label: string; hint: string }[] = [
-  { value: 'cute', label: 'かわいい', hint: 'まるい体・パステル・ときどきおばけ' },
-  { value: 'cool', label: 'かっこいい', hint: 'とがった耳・深い色・光る目' },
+  { value: 'cute', label: 'かわいい', hint: 'くま・いぬ・ひよこ・おばけ など' },
+  { value: 'cool', label: 'かっこいい', hint: 'きつね・とら・ドラゴン など' },
   { value: 'random', label: 'ランダム', hint: 'どんな子かは生まれてから' },
 ];
 

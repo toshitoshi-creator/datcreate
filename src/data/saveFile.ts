@@ -2,6 +2,7 @@ import { HEX_COLOR_RE } from '../core/color';
 import { SAVE_FORMAT, SCHEMA_VERSION } from '../core/constants';
 import { isSupportedGenerator } from '../core/generator';
 import { CREATURE_STYLES, type CreatureStyle } from '../core/genome';
+import { ALL_SPECIES, type Species } from '../core/species';
 import type { EnvironmentLog, GameState, Milestone, Pixel } from '../core/types';
 
 export interface SaveFile {
@@ -70,6 +71,7 @@ export function validateSave(input: unknown): ValidationResult {
   if (!isInt(g.initialSeed) || (g.initialSeed as number) < 0 || (g.initialSeed as number) > 0xffffffff) errors.push('game.initialSeed が不正です');
   if (!isInt(g.generatorVersion) || !isSupportedGenerator(g.generatorVersion as number)) errors.push('未対応の generatorVersion です');
   if (g.style !== undefined && !CREATURE_STYLES.includes(g.style as CreatureStyle)) errors.push('game.style が不正です');
+  if (g.species !== undefined && !ALL_SPECIES.includes(g.species as Species)) errors.push('game.species が不正です');
   if (g.name !== undefined && (typeof g.name !== 'string' || g.name.length > 100)) errors.push('game.name が不正です');
   if (errors.length) return { ok: false, errors };
 
@@ -120,6 +122,7 @@ export function validateSave(input: unknown): ValidationResult {
     ...(g.style !== undefined ? { style: g.style as CreatureStyle } : {}),
     ...(g.keepGrowing === true ? { keepGrowing: true } : {}),
     ...(typeof g.name === 'string' ? { name: g.name } : {}),
+    ...(g.species !== undefined ? { species: g.species as Species } : {}),
   };
   return {
     ok: true,

@@ -213,7 +213,7 @@ test('start offers only cute / cool / random; the choice is kept after reload', 
   await expect(count(page)).toHaveText('1');
   await page.reload();
   await page.getByTestId('open-settings').click();
-  await expect(page.getByTestId('creature-style')).toHaveText(/^かっこいい(・おばけ)?$/);
+  await expect(page.getByTestId('creature-style')).toHaveText(/^かっこいい/);
 });
 
 test('after 30 days a finished creature goes to the collection and a new one starts', async ({ page }) => {

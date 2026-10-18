@@ -7,6 +7,7 @@ import { test } from '@playwright/test';
 test.skip(!process.env.PREVIEW_DIR, 'set PREVIEW_DIR to render previews');
 import { HOUR_MS, SAVE_FORMAT } from '../src/core/constants';
 import { Simulation } from '../src/core/generator';
+import type { Species } from '../src/core/species';
 import { timeOfDayFromHour } from '../src/core/time';
 
 const CASES = (process.env.PREVIEW ?? '17:250,17:720,18:720,19:720,20:720,21:2200').split(',');
@@ -15,7 +16,7 @@ for (const c of CASES) {
   test(`preview ${c}`, async ({ page }) => {
     const seed = (k * 2654435761) >>> 0;
     const startedAt = Date.now() - (n - 1) * HOUR_MS - 60_000;
-    const game = { gameId: 'pv', startedAt, lastProcessedGrowthIndex: n - 1, schemaVersion: 1, generatorVersion: 3, initialSeed: seed, style: (process.env.STYLE ?? 'cute') as 'cute' | 'cool' | 'ghost' | 'ghostCool', createdAt: startedAt, updatedAt: startedAt, lastObservedAt: startedAt, keepGrowing: true };
+    const game = { gameId: 'pv', startedAt, lastProcessedGrowthIndex: n - 1, schemaVersion: 1, generatorVersion: 3, initialSeed: seed, style: (process.env.STYLE ?? 'cute') as 'cute' | 'cool' | 'ghost' | 'ghostCool', ...(process.env.SPECIES ? { species: process.env.SPECIES as Species } : {}), createdAt: startedAt, updatedAt: startedAt, lastObservedAt: startedAt, keepGrowing: true };
     const sim = new Simulation(game);
     const pixels = [];
     for (let i = 0; i < n; i++) {
@@ -30,6 +31,6 @@ for (const c of CASES) {
     await page.getByTestId('settings-message').waitFor();
     await page.getByTestId('close-settings').click();
     await page.waitForTimeout(1500);
-    await page.screenshot({ path: `${process.env.PREVIEW_DIR}/${c.replace(':', '-')}.png` });
+    await page.screenshot({ path: `${process.env.PREVIEW_DIR}/${process.env.SPECIES ?? 'x'}-${c.replace(':', '-')}.png` });
   });
 }

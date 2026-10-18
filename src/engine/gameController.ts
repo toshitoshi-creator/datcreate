@@ -1,7 +1,8 @@
 import { CLOCK_ROLLBACK_TOLERANCE_MS, COMPLETE_GROWTH_INDEX, CURRENT_GENERATOR_VERSION, NAME_MAX_LENGTH, SCHEMA_VERSION, WEATHER_VALID_MS } from '../core/constants';
 import { Simulation } from '../core/generator';
 import { detectMilestones, sortMilestones } from '../core/milestones';
-import { CREATURE_STYLES, type CreatureStyle } from '../core/genome';
+import type { CreatureStyle } from '../core/genome';
+import { COOL_SPECIES, CUTE_SPECIES, type Species } from '../core/species';
 import { freshSeed, hash32 } from '../core/rng';
 import { dueGrowthIndex, growthTime, timeOfDayFromHour } from '../core/time';
 import type { EnvUsed, EnvironmentLog, FetchStatus, GameState, Milestone, Pixel } from '../core/types';
@@ -82,13 +83,24 @@ export function normalizeName(name: string): string {
   return clean;
 }
 
-/** Player choice -> concrete style. 'cute' / 'cool' sometimes grow into the matching ghost. */
-export function resolveStyle(choice: StyleChoice, initialSeed: number): CreatureStyle {
-  const roll = hash32(initialSeed, 'style') % 100;
-  if (choice === 'random') return CREATURE_STYLES[roll % CREATURE_STYLES.length];
-  if (choice === 'cute') return roll < 30 ? 'ghost' : 'cute';
-  if (choice === 'cool') return roll < 30 ? 'ghostCool' : 'cool';
-  return choice; // a concrete style (tests / imports)
+/**
+ * Player choice -> concrete look. 'cute' / 'cool' become one of that family's
+ * looks: the plain look, its ghost, or one of its animals. 'random' picks a
+ * family first. Concrete styles (tests, imports) pass through unchanged.
+ */
+export function resolveStyle(choice: StyleChoice, initialSeed: number): { style: CreatureStyle; species?: Species } {
+  const roll = hash32(initialSeed, 'style') % 1000;
+  const family = choice === 'random' ? (roll % 2 ? 'cool' : 'cute') : choice;
+  if (family !== 'cute' && family !== 'cool') return { style: family };
+  const r = Math.floor(roll / 2) % 100; // independent of the family bit
+  if (family === 'cute') {
+    if (r < 18) return { style: 'cute' };
+    if (r < 32) return { style: 'ghost' };
+    return { style: 'cute', species: CUTE_SPECIES[(r - 32) % CUTE_SPECIES.length] };
+  }
+  if (r < 16) return { style: 'cool' };
+  if (r < 30) return { style: 'ghostCool' };
+  return { style: 'cool', species: COOL_SPECIES[(r - 30) % COOL_SPECIES.length] };
 }
 
 export type StyleChoice = 'cute' | 'cool' | 'random' | CreatureStyle;
@@ -205,7 +217,7 @@ export class GameController {
   async startNewGame(choice: StyleChoice = 'cute'): Promise<void> {
     const now = this.deps.clock.now();
     const initialSeed = freshSeed();
-    const style = resolveStyle(choice, initialSeed);
+    const { style, species } = resolveStyle(choice, initialSeed);
     const game: GameState = {
       gameId: `g${now.toString(36)}${initialSeed.toString(36)}`,
       startedAt: now,
@@ -217,6 +229,7 @@ export class GameController {
       updatedAt: now,
       lastObservedAt: now,
       style,
+      ...(species ? { species } : {}),
     };
     const sim = new Simulation(game);
     const slot = this.envForSlot(now);

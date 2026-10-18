@@ -1,4 +1,5 @@
 import { Rng, hash32 } from './rng';
+import { applySpecies, isCoolSpecies, type Species } from './species';
 
 /**
  * Individual traits derived deterministically from the game's initial seed.
@@ -100,14 +101,32 @@ export interface Genome {
   shineInset?: number;
   /** Facial colour tendencies apply at full strength from the start (ghost style). */
   firmFace?: boolean;
+  /** Species markings, in body-plan units (like blobs). Painted on dots that land there. */
+  marks?: MarkGene[];
+}
+
+export interface MarkGene {
+  cx: number;
+  cy: number;
+  rx: number;
+  ry: number;
+  h: number;
+  s: number;
+  l: number;
+  /** Small feature (nose, beak): painted only once surrounded, like eyes. */
+  dot?: boolean;
 }
 
 const DEG = Math.PI / 180;
 
-export function deriveGenome(initialSeed: number, generatorVersion: number, style?: CreatureStyle): Genome {
+export function deriveGenome(initialSeed: number, generatorVersion: number, style?: CreatureStyle, species?: Species): Genome {
   const base = deriveBaseGenome(initialSeed, generatorVersion);
   if (generatorVersion >= 3) {
     const cute = kawaiify(base, initialSeed, generatorVersion);
+    if (species) {
+      const family = isCoolSpecies(species) ? coolify(cute, initialSeed, generatorVersion) : cute;
+      return applySpecies(family, species, initialSeed, generatorVersion);
+    }
     if (style === 'cool') return coolify(cute, initialSeed, generatorVersion);
     if (style === 'ghost' || style === 'ghostCool') return ghostify(cute, initialSeed, generatorVersion, style === 'ghostCool');
     return cute;

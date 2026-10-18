@@ -5,9 +5,11 @@ import {
   buildFacePlan,
   buildFuturePlan,
   canPlanFace,
+  earlyFaceZones,
   epochAtOrBefore,
   nextEpochAfter,
   smoothstep,
+  type FaceZones,
   type FacePlan,
   type ShapeAnalysis,
 } from './analysis';
@@ -29,11 +31,13 @@ export interface SlotInput {
   environmentSnapshotId: string | null;
 }
 
-export type GameIdentity = Pick<GameState, 'gameId' | 'initialSeed' | 'generatorVersion' | 'style'>;
+export type GameIdentity = Pick<GameState, 'gameId' | 'initialSeed' | 'generatorVersion' | 'style' | 'species'>;
 
 interface GeneratorContext {
   game: GameIdentity;
   tuning: Tuning;
+  /** Face zones to use while no analysis exists yet (species only). */
+  earlyFace?: FaceZones | null;
   genome: Genome;
   model: GrowthModel;
   analysis: ShapeAnalysis | null;
@@ -46,13 +50,13 @@ export const pixelSeed = (initialSeed: number, growthIndex: number, generatorVer
 function makePixel(ctx: GeneratorContext, x: number, y: number, parent: CellInfo | null, rng: Rng, seed: number): Pixel {
   const { game, genome, model, analysis, slot, tuning } = ctx;
   const k = cellKey(x, y);
-  const face = analysis?.face ?? null;
+  const face = analysis?.face ?? ctx.earlyFace ?? null;
   const inFace = !!face && x >= face.box.x0 && x <= face.box.x1 && y >= face.box.y0 && y <= face.box.y1;
   const skip = face && tuning.paintedFace
     ? (nx: number, ny: number) => face.accent.has(cellKey(nx, ny))
     : undefined;
   const faceStrength = face ? (genome.firmFace ? genome.faceAffinity : face.strength) : 0;
-  const hsl = generateColor(rng, model, x, y, genome, slot.env, face?.accent.get(k), faceStrength, tuning, inFace, skip);
+  const hsl = generateColor(rng, model, x, y, genome, slot.env, face?.accent.get(k), faceStrength, tuning, inFace, skip, face?.markColor.get(k));
   return {
     id: `${game.gameId}:${slot.growthIndex}`,
     gameId: game.gameId,
@@ -102,7 +106,7 @@ function generate(ctx: GeneratorContext): Pixel {
     }
     return best;
   };
-  const face = analysis?.face ?? null;
+  const face = analysis?.face ?? ctx.earlyFace ?? null;
   const axisX = analysis ? analysis.axisX : Math.round(cx * 2) / 2;
 
   // Recent growth direction (momentum) ----------------------------------
@@ -217,7 +221,7 @@ function generate(ctx: GeneratorContext): Pixel {
       if (a === 'eye') s += ob * face.strength * t.eyeBonus;
       else if (a === 'nose') s += ob * face.strength * 0.8;
       // painted features wait for support so they form inside the body, not on its edge
-      if (t.inkNeedsSupport && (a === 'ink' || a === 'shine' || a === 'cheek' || a === 'mouth' || a === 'fang' || a === 'crest') && n8 < t.inkNeedsSupport && !face.enclosed.has(c.k)) s -= ob * face.strength * 8;
+      if (t.inkNeedsSupport && (a === 'ink' || a === 'shine' || a === 'cheek' || a === 'mouth' || a === 'fang' || a === 'crest' || a === 'markDot') && n8 < t.inkNeedsSupport && !face.enclosed.has(c.k)) s -= ob * face.strength * 8;
 
     }
     s += rng.next() * 0.05;
@@ -264,7 +268,7 @@ export class Simulation {
     if (!isSupportedGenerator(game.generatorVersion)) {
       throw new Error(`Unsupported generator version ${game.generatorVersion}`);
     }
-    this.genome = deriveGenome(game.initialSeed, game.generatorVersion, game.style);
+    this.genome = deriveGenome(game.initialSeed, game.generatorVersion, game.style, game.species);
     this.tuning = tuningFor(game.generatorVersion);
     if (this.tuning.futureFaceAt > 0) {
       // v3: the facial plan depends only on the genome, so it is fixed up-front.
@@ -340,9 +344,14 @@ export class Simulation {
   generateNext(slot: Omit<SlotInput, 'growthIndex'>): { pixel: Pixel; analysis: ShapeAnalysis | null; freshAnalysis: boolean } {
     const growthIndex = this.nextIndex;
     const { analysis, fresh } = this.analysisFor(growthIndex);
+    const model = this.model;
+    const earlyFace = !analysis && this.genome.marks && this.facePlans.length
+      ? earlyFaceZones(this.facePlans, this.genome, model.size, (x, y) => model.has(x, y), this.tuning)
+      : null;
     const pixel = GENERATORS[this.game.generatorVersion]({
       game: this.game,
       tuning: this.tuning,
+      earlyFace,
       genome: this.genome,
       model: this.model,
       analysis,

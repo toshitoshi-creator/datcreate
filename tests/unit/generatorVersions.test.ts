@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { analyzeShape } from '../../src/core/analysis';
 import { Simulation } from '../../src/core/generator';
+import { hexToHsl } from '../../src/core/color';
+import { ALL_SPECIES, isCoolSpecies, type Species } from '../../src/core/species';
 import { HOUR_MS, T0, envAt, grow } from '../helpers';
 
 const fp = (seed: number, version: number) =>
@@ -188,6 +190,73 @@ describe('generator v3 ghost styles (おばけ)', () => {
       }
       console.info(`[${style}] two eyes at 720 dots: ${faces}/30`);
       expect(faces).toBeGreaterThanOrEqual(20);
+    }
+  });
+});
+
+describe('v3 animal looks (species)', () => {
+  const famOf = (sp: Species) => (isCoolSpecies(sp) ? 'cool' : 'cute');
+  const growSp = (seed: number, n: number, sp: Species) => grow(seed, n, (i) => envAt((9 + i) % 24), 3, famOf(sp), sp);
+
+  it('outputs are frozen', () => {
+    const fps = Object.fromEntries(
+      ALL_SPECIES.map((sp) => [sp, createHash('sha256').update(grow(42, 900, undefined, 3, famOf(sp), sp).pixels.map((p) => `${p.x},${p.y},${p.color}`).join('|')).digest('hex').slice(0, 16)]),
+    );
+    expect(fps).toEqual({
+      bear: 'e3a81c901965e028',
+      dog: '0ddbcfb2167d3fc4',
+      chick: '6ad60d0b10c81a15',
+      frog: '1fe84783a64e1db5',
+      hamster: 'bf6e5b53034f786d',
+      pig: 'a31ee857e7086051',
+      penguin: '2b4f1b51ee058ce7',
+      fox: 'c3d21776fff98a5a',
+      wolf: 'a2a72afd1f46c8aa',
+      bat: 'bde9373caff253ba',
+      owl: '5fdc02dc67cd8dc4',
+      tiger: '9b4416cc0f4fbc1c',
+      dragon: '7ffceffc28be94d4',
+    });
+  });
+
+  it('each animal resumes identically after a restart and never stacks dots', () => {
+    for (const sp of ALL_SPECIES) {
+      const full = growSp(7, 400, sp).pixels;
+      expect(new Set(full.map((p) => `${p.x},${p.y}`)).size).toBe(400);
+      for (const cut of [1, 5, 9, 150]) {
+        const sim = new Simulation({ gameId: 'test', initialSeed: 7, generatorVersion: 3, style: famOf(sp), species: sp }, full.slice(0, cut));
+        for (let i = cut; i < 400; i++) {
+          expect(sim.generateNext({ createdAt: T0 + i * HOUR_MS, env: envAt((9 + i) % 24), environmentSnapshotId: null }).pixel).toEqual(full[i]);
+        }
+      }
+    }
+  });
+
+  it('most individuals of every animal finish their eyes and markings by 30 days', () => {
+    for (const sp of ALL_SPECIES) {
+      let faces = 0, marked = 0;
+      for (let k = 1; k <= 12; k++) {
+        const { sim, pixels } = growSp(k * 7919, 720, sp);
+        expect(sim.genome.limbs).toHaveLength(0);
+        if (!sim.plans.length) continue;
+        if ((sim.currentAnalysis()?.face?.eyesFromHoles ?? 0) >= 2) faces++;
+        // at least one marking colour actually shows up on the body
+        const mark = sim.genome.marks![0];
+        if (pixels.some((p) => Math.abs(hexToHsl(p.color).l - mark.l) < 0.04 && Math.abs(((hexToHsl(p.color).h - mark.h + 540) % 360) - 180) < 12)) marked++;
+      }
+      console.info(`[${sp}] eyes ${faces}/12, markings ${marked}/12`);
+      expect(faces).toBeGreaterThanOrEqual(9);
+      expect(marked).toBeGreaterThanOrEqual(9);
+    }
+  });
+
+  it('cool animals never get red eyes; cute animals keep dark eyes', () => {
+    for (const sp of ALL_SPECIES) {
+      for (let k = 1; k <= 10; k++) {
+        const g = growSp(k, 1, sp).sim.genome;
+        if (isCoolSpecies(sp)) expect(g.irisHue! > 20 && g.irisHue! < 330).toBe(true);
+        else expect(g.irisHue).toBeUndefined();
+      }
     }
   });
 });

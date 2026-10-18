@@ -1,4 +1,5 @@
 import type { CreatureStyle } from './genome';
+import type { Species } from './species';
 import type { TimeOfDay } from './time';
 
 export type Weather = 'clear' | 'cloudy' | 'rain' | 'snow' | 'storm' | 'fog' | 'unknown';
@@ -19,6 +20,8 @@ export interface GameState {
   lastObservedAt: number;
   /** Look chosen at start (v3+). Missing = 'cute'. Fixed for the game's life. */
   style?: CreatureStyle;
+  /** Animal look within the style family (v3+). Missing = the plain style look. */
+  species?: Species;
   /** The player chose to keep growing past completion (30 days). */
   keepGrowing?: boolean;
   /** Set when the creature was moved to the collection; it no longer grows. */
