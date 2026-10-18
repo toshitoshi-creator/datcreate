@@ -4,9 +4,9 @@ import type { GameController } from '../engine/gameController';
 type Choice = 'cute' | 'cool' | 'random';
 
 const CHOICES: { value: Choice; label: string; hint: string }[] = [
-  { value: 'cute', label: 'かわいい', hint: 'くま・いぬ・ひよこ・おばけ など' },
-  { value: 'cool', label: 'かっこいい', hint: 'きつね・とら・ドラゴン など' },
-  { value: 'random', label: 'ランダム', hint: 'どんな子かは生まれてから' },
+  { value: 'cute', label: 'かわいい', hint: 'やさしい雰囲気の子が生まれやすい' },
+  { value: 'cool', label: 'かっこいい', hint: 'クールな雰囲気の子が生まれやすい' },
+  { value: 'random', label: 'ランダム', hint: 'どちらになるかもお楽しみ' },
 ];
 
 interface Props {
@@ -48,7 +48,7 @@ export function StartScreen({ controller, onStart, onOpenCollection }: Props) {
           </button>
         ))}
       </div>
-      <p className="muted small">タイプは「なりやすさ」の傾向です。形や顔は育ってみるまでわかりません。</p>
+      <p className="muted small">どんな子が生まれるかは、育ててみてからのお楽しみ。</p>
       <button
         className="btn primary"
         data-testid="start-button"

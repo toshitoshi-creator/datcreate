@@ -4,7 +4,6 @@ import type { FetchStatus } from '../core/types';
 import type { ControllerState } from '../engine/gameController';
 import { useSettings } from './hooks';
 import { NameForm } from './NameForm';
-import { lookLabel } from './styleLabels';
 import type { AppServices } from './services';
 
 const STATUS_LABEL: Record<FetchStatus, string> = {
@@ -74,18 +73,15 @@ export function SettingsScreen({ services, state, onClose }: Props) {
         <span />
       </header>
       <div className="sheet-body">
-        <Section title="この個体">
-          <Row label="タイプ" hint="タイプは生まれたときに決まり、途中で変わりません。">
-            <span data-testid="creature-style">{state.game ? lookLabel(state.game) : ''}</span>
-          </Row>
-          {state.completion !== 'growing' && (
+        {state.completion !== 'growing' && (
+          <Section title="この個体">
             <Row label="図鑑にしまう" hint="名前をつけて今の姿のまま図鑑に保存し、新しい子を育てます。">
               <button className="btn small" data-testid="retire-from-settings" disabled={busy} onClick={() => { setRetireSuggestion(controller.suggestName()); setConfirmRetire(true); }}>
                 新しい子を育てる
               </button>
             </Row>
-          )}
-        </Section>
+          </Section>
+        )}
 
         <Section title="環境">
           <Row label="位置情報を使って天気を反映" hint="座標は保存・表示しません。天気の取得にだけ使います。">

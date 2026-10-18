@@ -23,6 +23,9 @@ async function jump(page: Page, ms: number) {
   await page.clock.setSystemTime(now + ms);
 }
 
+/** Type and animal names must never be shown (it is a surprise). */
+const HIDDEN_WORDS = /かわいい|かっこいい|おばけ|くま|いぬ|ひよこ|かえる|ハムスター|ぶた|ペンギン|きつね|おおかみ|こうもり|ふくろう|とら|ドラゴン/;
+
 const count = (page: Page) => page.getByTestId('dot-count');
 
 /** Wait until rendering settles, then read the canvas pixels. */
@@ -212,8 +215,10 @@ test('start offers only cute / cool / random; the choice is kept after reload', 
   await page.getByTestId('start-button').click();
   await expect(count(page)).toHaveText('1');
   await page.reload();
+  await expect(count(page)).toHaveText('1');
+  // what the creature will become is a surprise: no type / animal names anywhere
   await page.getByTestId('open-settings').click();
-  await expect(page.getByTestId('creature-style')).toHaveText(/^かっこいい/);
+  await expect(page.getByTestId('settings-screen')).not.toContainText(HIDDEN_WORDS);
 });
 
 test('after 30 days a finished creature goes to the collection and a new one starts', async ({ page }) => {
@@ -251,8 +256,10 @@ test('after 30 days a finished creature goes to the collection and a new one sta
   await expect(page.getByTestId('collection-item').first()).toContainText('721 dots');
   await page.waitForTimeout(500);
   await page.screenshot({ path: 'test-results/shots/collection.png' });
+  await expect(page.getByTestId('collection-screen')).not.toContainText(HIDDEN_WORDS);
   await page.getByTestId('collection-item').last().click();
   await expect(page.getByTestId('collection-detail')).toContainText('721');
+  await expect(page.getByTestId('collection-detail')).not.toContainText(HIDDEN_WORDS);
   await page.getByTestId('rename').click();
   await page.getByTestId('name-input').fill('もちまる初代');
   await page.getByTestId('name-submit').click();

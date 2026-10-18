@@ -4,7 +4,6 @@ import type { GameState, Pixel } from '../core/types';
 import type { GameController } from '../engine/gameController';
 import { drawThumbnail } from '../render/renderer';
 import { NameForm } from './NameForm';
-import { lookLabel } from './styleLabels';
 
 const fmt = new Intl.DateTimeFormat('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' });
 
@@ -55,7 +54,6 @@ export function CollectionScreen({ controller, onClose }: { controller: GameCont
                   <Thumb controller={controller} game={g} size={150} />
                   <span className="collection-name" data-testid="collection-name">{displayName(g, items.length - i)}</span>
                   <span className="muted small">No.{items.length - i}</span>
-                  <span className="muted small">{lookLabel(g)}</span>
                   <span className="muted small">{(g.lastProcessedGrowthIndex + 1).toLocaleString()} dots</span>
                 </button>
               </li>
@@ -125,10 +123,6 @@ function CollectionDetail({ game, number, controller, onDeleted, onRenamed }: De
       <Thumb controller={controller} game={game} size={Math.min(340, (globalThis.innerWidth || 360) - 32)} />
       <dl className="detail-facts">
         <div>
-          <dt>タイプ</dt>
-          <dd>{lookLabel(game)}</dd>
-        </div>
-        <div>
           <dt>ドット</dt>
           <dd>{(game.lastProcessedGrowthIndex + 1).toLocaleString()}</dd>
         </div>
@@ -136,7 +130,7 @@ function CollectionDetail({ game, number, controller, onDeleted, onRenamed }: De
           <dt>育てた日数</dt>
           <dd>{days}日</dd>
         </div>
-        <div>
+        <div className="span-2">
           <dt>期間</dt>
           <dd>
             {fmt.format(game.startedAt)} 〜 {fmt.format(game.archivedAt ?? game.updatedAt)}

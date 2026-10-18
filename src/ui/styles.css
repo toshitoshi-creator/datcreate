@@ -846,3 +846,4 @@ button {
   gap: 4px 14px;
   font-size: 14px;
 }
+.detail-facts .span-2 { grid-column: span 2; }

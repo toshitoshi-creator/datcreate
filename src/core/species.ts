@@ -12,22 +12,6 @@ export const COOL_SPECIES = ['fox', 'wolf', 'bat', 'owl', 'tiger', 'dragon'] as 
 export type Species = (typeof CUTE_SPECIES)[number] | (typeof COOL_SPECIES)[number];
 export const ALL_SPECIES: readonly Species[] = [...CUTE_SPECIES, ...COOL_SPECIES];
 
-export const SPECIES_LABEL: Record<Species, string> = {
-  bear: 'くま',
-  dog: 'いぬ',
-  chick: 'ひよこ',
-  frog: 'かえる',
-  hamster: 'ハムスター',
-  pig: 'ぶた',
-  penguin: 'ペンギン',
-  fox: 'きつね',
-  wolf: 'おおかみ',
-  bat: 'こうもり',
-  owl: 'ふくろう',
-  tiger: 'とら',
-  dragon: 'ドラゴン',
-};
-
 export function isCoolSpecies(s: Species): boolean {
   return (COOL_SPECIES as readonly string[]).includes(s);
 }
