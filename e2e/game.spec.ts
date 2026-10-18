@@ -345,6 +345,10 @@ test('a small battle against a wild dot, with stats from colours and no names re
 test('production build exposes no time-travel controls', async ({ page }) => {
   await startGame(page);
   await expect(page.locator('.dev-panel')).toHaveCount(0);
+  // completion notifications are the iOS / Android app only: no setting on the web
+  await page.getByTestId('open-settings').click();
+  await expect(page.getByTestId('toggle-animation')).toBeVisible();
+  await expect(page.getByTestId('toggle-notify')).toHaveCount(0);
 });
 
 test('a collection of 120 creatures: a light list, detail, and a battle from the detail', async ({ page }) => {

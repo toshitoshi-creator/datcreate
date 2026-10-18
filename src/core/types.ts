@@ -95,6 +95,8 @@ export interface Settings {
   /** Pixel-art outline around the body (display only). */
   outlineEnabled: boolean;
   locationEnabled: boolean;
+  /** Notify when the creature is finished (the native app only). */
+  notifyOnComplete: boolean;
   /** CSS px per grid cell; null = auto fit. */
   zoomLevel: number | null;
   viewCenterX: number | null;

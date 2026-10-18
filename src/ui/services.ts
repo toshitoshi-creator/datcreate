@@ -1,8 +1,10 @@
 import { GameRepository } from '../data/repository';
 import { SettingsStore } from '../data/settings';
 import { DevClock, systemClock, type Clock } from '../engine/clock';
+import { CompletionNotifier } from '../engine/completionNotifier';
 import { GameController, browserLock } from '../engine/gameController';
 import { EnvironmentService } from '../services/environmentService';
+import { nativeNotificationPort } from '../services/nativeNotifications';
 import { defaultWeatherProvider } from '../services/weather';
 
 export interface AppServices {
@@ -10,6 +12,8 @@ export interface AppServices {
   settings: SettingsStore;
   clock: Clock;
   devClock: DevClock | null;
+  /** Completion notices are available (the iOS / Android app). */
+  notifications: boolean;
 }
 
 let services: Promise<AppServices> | null = null;
@@ -28,7 +32,9 @@ export function getServices(): Promise<AppServices> {
       geolocation: typeof navigator !== 'undefined' && 'geolocation' in navigator ? navigator.geolocation : null,
     });
     const controller = new GameController({ repo, environment, settings, clock, lock: browserLock() });
-    return { controller, settings, clock, devClock };
+    const port = nativeNotificationPort();
+    if (port) new CompletionNotifier(controller, settings, clock, port);
+    return { controller, settings, clock, devClock, notifications: !!port };
   })();
   return services;
 }
