@@ -43,3 +43,8 @@ export function formatCountdown(ms: number): string {
   const mmss = `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
   return h > 0 ? `${h}:${mmss}` : mmss;
 }
+
+/** Start of the effective schedule: items pull every later slot earlier. */
+export function scheduleStart(game: { startedAt: number; timeBonusMs?: number }): number {
+  return game.startedAt - (game.timeBonusMs ?? 0);
+}

@@ -123,6 +123,9 @@ export function validateSave(input: unknown): ValidationResult {
     ...(g.keepGrowing === true ? { keepGrowing: true } : {}),
     ...(typeof g.name === 'string' ? { name: g.name } : {}),
     ...(g.species !== undefined ? { species: g.species as Species } : {}),
+    ...(isNum(g.timeBonusMs) && (g.timeBonusMs as number) >= 0 ? { timeBonusMs: g.timeBonusMs as number } : {}),
+    ...(isNum(g.giftClaimedAt) ? { giftClaimedAt: g.giftClaimedAt as number } : {}),
+    ...(Array.isArray(g.gift) ? { gift: (g.gift as { itemId: string; count: number }[]).filter((e) => isObj(e) && isStr(e.itemId) && isInt(e.count)) } : {}),
   };
   return {
     ok: true,

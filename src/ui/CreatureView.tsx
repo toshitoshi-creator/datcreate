@@ -59,6 +59,10 @@ export const CreatureView = forwardRef<CreatureViewHandle, Props>(function Creat
       }
     });
 
+    const offReaction = controller.onReaction((e) => r.react(e.item.kind, e.item.icon));
+    const onVisible = () => r.requestRender(); // resume breathing when the page comes back
+    document.addEventListener('visibilitychange', onVisible);
+
     const ro = new ResizeObserver(() => r.resize());
     ro.observe(canvas);
 
@@ -142,6 +146,8 @@ export const CreatureView = forwardRef<CreatureViewHandle, Props>(function Creat
     return () => {
       clearTimeout(saveTimer);
       offPixels();
+      offReaction();
+      document.removeEventListener('visibilitychange', onVisible);
       ro.disconnect();
       r.destroy();
       rendererRef.current = null;

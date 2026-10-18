@@ -28,6 +28,16 @@ export interface GameState {
   archivedAt?: number;
   /** Name given when it was put in the collection. Names may repeat; gameId identifies. */
   name?: string;
+  /**
+   * Total time items have pulled the growth schedule forward (ms). Slot i is
+   * due at startedAt - timeBonusMs + i hours. Only ever increases.
+   */
+  timeBonusMs?: number;
+  /** Recent item uses (newest last, capped). */
+  itemUses?: { itemId: string; at: number; ms: number }[];
+  /** Thank-you present received at completion (once). */
+  gift?: { itemId: string; count: number }[];
+  giftClaimedAt?: number;
 }
 
 /** Inputs that influenced a pixel, stored inline so a pixel's environment is reproducible. */

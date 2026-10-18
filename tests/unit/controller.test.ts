@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DAY_MS } from '../../src/core/constants';
 import { GameRepository } from '../../src/data/repository';
 import { resolveStyle } from '../../src/engine/gameController';
+import { STARTER_PACK, giftFor } from '../../src/core/items';
 import { COOL_SPECIES, CUTE_SPECIES } from '../../src/core/species';
 import { FakeClock, HOUR_MS, T0, failingProvider, fakeGeolocation, makeHarness, okProvider } from '../helpers';
 
@@ -458,5 +459,81 @@ describe('GameController: naming collection entries', () => {
     expect(await h.controller.listCollection()).toEqual([]);
     await h.controller.retireToCollection('あ'.repeat(20));
     expect((await h.controller.listCollection())[0].name).toBe('あ'.repeat(20));
+  });
+});
+
+describe('GameController: items and gifts', () => {
+  it('starts with the starter pack', async () => {
+    const h = await makeHarness({ clock: new FakeClock(T0) });
+    expect(h.controller.getState().inventory).toEqual(STARTER_PACK);
+  });
+
+  it('using an item never adds a dot, but brings the next growth earlier (and keeps the hourly rhythm)', async () => {
+    const clock = new FakeClock(T0);
+    const h = await makeHarness({ clock });
+    await h.controller.startNewGame();
+    clock.advance(10 * 60_000); // 50 min to the next growth
+    const ev = await h.controller.useItem('apple'); // -10 min
+    expect(ev.ms).toBe(10 * 60_000);
+    expect(h.controller.getState().pixelCount).toBe(1);
+    expect(h.controller.getState().inventory.apple).toBe(STARTER_PACK.apple - 1);
+    clock.advance(39 * 60_000); // 49 min after start: not yet
+    expect(await h.controller.checkGrowth()).toBe(0);
+    clock.advance(60_000); // 50 min after start = new due time
+    await h.controller.checkGrowth();
+    expect(h.controller.getState().pixelCount).toBe(2);
+    expect(h.controller.pixels[1].createdAt).toBe(T0 + 50 * 60_000);
+    clock.advance(60 * 60_000); // still one per hour afterwards
+    await h.controller.checkGrowth();
+    expect(h.controller.getState().pixelCount).toBe(3);
+  });
+
+  it('never pulls the next growth closer than a minute; refuses when it is about to happen', async () => {
+    const clock = new FakeClock(T0);
+    const h = await makeHarness({ clock });
+    await h.controller.startNewGame();
+    clock.advance(55 * 60_000); // 5 min left
+    const ev = await h.controller.useItem('cookie'); // -20 min requested
+    expect(ev.ms).toBe(4 * 60_000); // capped: 1 min left
+    expect(h.controller.getState().pixelCount).toBe(1);
+    const before = h.controller.getState().inventory;
+    await expect(h.controller.useItem('ball')).rejects.toThrow('もうすぐ');
+    expect(h.controller.getState().inventory).toEqual(before);
+    await expect(h.controller.useItem('cake')).rejects.toThrow('持っていません');
+    clock.advance(60_000);
+    await h.controller.checkGrowth();
+    expect(h.controller.getState().pixelCount).toBe(2);
+  });
+
+  it('item effects and stock survive a restart', async () => {
+    const clock = new FakeClock(T0);
+    const a = await makeHarness({ clock });
+    await a.controller.startNewGame();
+    await a.controller.useItem('ball');
+    a.repo.close();
+    const b = await makeHarness({ clock, factory: a.factory, storage: a.storage });
+    expect(b.controller.getState().game?.timeBonusMs).toBe(10 * 60_000);
+    expect(b.controller.getState().inventory.ball).toBe(STARTER_PACK.ball - 1);
+    clock.advance(50 * 60_000);
+    await b.controller.checkGrowth();
+    expect(b.controller.getState().pixelCount).toBe(2);
+  });
+
+  it('a completed creature gives its thank-you present exactly once', async () => {
+    const clock = new FakeClock(T0);
+    const h = await makeHarness({ clock });
+    await h.controller.startNewGame();
+    clock.advance(30 * DAY_MS);
+    await h.controller.checkGrowth();
+    const game = h.controller.getState().game!;
+    expect(game.gift).toEqual(giftFor(game.initialSeed));
+    const inv = h.controller.getState().inventory;
+    for (const g of game.gift!) expect(inv[g.itemId]).toBe((STARTER_PACK[g.itemId] ?? 0) + g.count);
+    await expect(h.controller.useItem('apple')).rejects.toThrow('完成');
+    h.repo.close();
+    const b = await makeHarness({ clock, factory: h.factory, storage: h.storage });
+    await b.controller.continueGrowing();
+    expect(b.controller.getState().inventory).toEqual(inv); // not given twice
+    await b.controller.useItem(game.gift![0].itemId); // usable again while growing on
   });
 });

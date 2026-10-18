@@ -31,6 +31,7 @@ export function SettingsScreen({ services, state, onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [confirmRetire, setConfirmRetire] = useState(false);
+  const [retireSuggestion, setRetireSuggestion] = useState<Promise<string> | null>(null);
   const [pendingImport, setPendingImport] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -79,7 +80,7 @@ export function SettingsScreen({ services, state, onClose }: Props) {
           </Row>
           {state.completion !== 'growing' && (
             <Row label="図鑑にしまう" hint="名前をつけて今の姿のまま図鑑に保存し、新しい子を育てます。">
-              <button className="btn small" data-testid="retire-from-settings" disabled={busy} onClick={() => setConfirmRetire(true)}>
+              <button className="btn small" data-testid="retire-from-settings" disabled={busy} onClick={() => { setRetireSuggestion(controller.suggestName()); setConfirmRetire(true); }}>
                 新しい子を育てる
               </button>
             </Row>
@@ -175,7 +176,7 @@ export function SettingsScreen({ services, state, onClose }: Props) {
             <h3>名前をつけて図鑑にしまう</h3>
             <p>この子は今の姿のまま図鑑に保存され、成長はそこで止まります。そのあと新しい子を育てます。</p>
             <NameForm
-              initial={controller.suggestName()}
+              initial={retireSuggestion ?? ''}
               submitLabel="図鑑に保存して、新しい子を育てる"
               onCancel={() => setConfirmRetire(false)}
               onSubmit={async (name) => {

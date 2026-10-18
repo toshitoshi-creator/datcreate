@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NAME_MAX_LENGTH } from '../core/constants';
 
 interface Props {
@@ -15,9 +15,16 @@ export function NameForm({ initial, submitLabel, onSubmit, onCancel, cancelLabel
   const [name, setName] = useState(typeof initial === 'string' ? initial : '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Apply an async suggestion once only, and never over what the player typed or cleared.
+  const touched = useRef(false);
+  const applied = useRef(false);
 
   useEffect(() => {
-    if (typeof initial !== 'string') void initial.then((v) => setName((cur) => cur || v));
+    if (typeof initial === 'string' || applied.current) return;
+    applied.current = true;
+    void initial.then((v) => {
+      if (!touched.current) setName(v);
+    });
   }, [initial]);
 
   return (
@@ -47,6 +54,7 @@ export function NameForm({ initial, submitLabel, onSubmit, onCancel, cancelLabel
         autoComplete="off"
         enterKeyHint="done"
         onChange={(e) => {
+          touched.current = true;
           setName(e.target.value);
           setError(null);
         }}

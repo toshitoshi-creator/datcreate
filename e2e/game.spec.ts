@@ -220,9 +220,12 @@ test('after 30 days a finished creature goes to the collection and a new one sta
   await startGame(page);
   await jump(page, 30 * 24 * HOUR);
   await expect(page.getByTestId('completion-dialog')).toBeVisible();
+  await expect(page.getByTestId('gift')).toContainText('お礼のプレゼント');
   await page.getByTestId('start-new-creature').click();
   await expect(page.getByTestId('name-input')).toHaveValue('ドット1号');
   await page.getByTestId('name-input').fill('');
+  await page.waitForTimeout(1500); // the screen re-renders every second; a cleared field must stay cleared
+  await expect(page.getByTestId('name-input')).toHaveValue('');
   await page.getByTestId('name-submit').click();
   await expect(page.getByTestId('name-error')).toContainText('名前を入力');
   await page.getByTestId('name-input').fill('もちまる');
@@ -257,6 +260,30 @@ test('after 30 days a finished creature goes to the collection and a new one sta
   await page.reload();
   await page.getByTestId('open-collection').click();
   await expect(page.getByTestId('collection-name')).toHaveText(['もちまる', 'もちまる初代']);
+});
+
+test('feeding and playing: no dot is added, the next growth comes sooner, stock goes down', async ({ page }) => {
+  await startGame(page);
+  await expect(page.getByTestId('countdown')).toHaveText(/^(1:00:00|59:5\d)$/);
+  await page.getByTestId('open-food').click();
+  await expect(page.getByTestId('count-apple')).toHaveText('×3');
+  await page.screenshot({ path: 'test-results/shots/items.png' });
+  await page.getByTestId('item-apple').click();
+  await expect(page.getByTestId('item-toast')).toContainText('10分はやくなった');
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: 'test-results/shots/reaction.png' });
+  await expect(count(page)).toHaveText('1');
+  await expect(page.getByTestId('countdown')).toHaveText(/^(50:00|49:5\d)$/);
+  await page.getByTestId('open-toy').click();
+  await page.getByTestId('item-ball').click();
+  await expect(page.getByTestId('countdown')).toHaveText(/^(40:00|39:5\d)$/);
+  await page.reload();
+  await expect(page.getByTestId('countdown')).toHaveText(/^(40:00|39:5\d)$/);
+  await page.getByTestId('open-food').click();
+  await expect(page.getByTestId('count-apple')).toHaveText('×2');
+  await page.getByTestId('close-items').click();
+  await jump(page, 40 * 60_000);
+  await expect(count(page)).toHaveText('2');
 });
 
 test('production build exposes no time-travel controls', async ({ page }) => {

@@ -1,10 +1,12 @@
 import { SAVE_FORMAT, SCHEMA_VERSION } from '../core/constants';
+import { STARTER_PACK, type GiftEntry, type Inventory } from '../core/items';
 import { sortMilestones } from '../core/milestones';
 import type { EnvironmentLog, GameState, Milestone, Pixel } from '../core/types';
 import { STORES, openDatabase, reqToPromise, txDone } from './db';
 import { validateSave, type SaveFile } from './saveFile';
 
 const ACTIVE_KEY = 'activeGameId';
+const INVENTORY_KEY = 'inventory';
 
 export class GrowthConflictError extends Error {
   constructor(message: string) {
@@ -215,6 +217,74 @@ export class GameRepository {
     }
     this.deleteGameInTx(tx, gameId);
     await txDone(tx);
+  }
+
+  // ---- items ---------------------------------------------------------------
+
+  /** Item counts shared by all creatures. The starter pack is added the first time. */
+  async getInventory(): Promise<Inventory> {
+    const tx = this.tx([STORES.meta], 'readwrite');
+    const store = tx.objectStore(STORES.meta);
+    const rec = (await reqToPromise(store.get(INVENTORY_KEY))) as { key: string; counts: Inventory } | undefined;
+    let counts = rec?.counts;
+    if (!counts) {
+      counts = { ...STARTER_PACK };
+      store.put({ key: INVENTORY_KEY, counts });
+    }
+    await txDone(tx);
+    return counts;
+  }
+
+  /**
+   * Use one item: decrement the stock and pull the creature's schedule
+   * forward by `ms`, in one transaction (never one without the other).
+   */
+  async useItem(gameId: string, itemId: string, ms: number, now: number): Promise<{ game: GameState; inventory: Inventory }> {
+    const tx = this.tx([STORES.meta, STORES.games], 'readwrite');
+    const meta = tx.objectStore(STORES.meta);
+    const games = tx.objectStore(STORES.games);
+    const rec = (await reqToPromise(meta.get(INVENTORY_KEY))) as { key: string; counts: Inventory } | undefined;
+    const game = (await reqToPromise(games.get(gameId))) as GameState | undefined;
+    const fail = (msg: string) => {
+      try { tx.abort(); } catch { /* already finished */ }
+      return new Error(msg);
+    };
+    const counts = { ...(rec?.counts ?? STARTER_PACK) };
+    if (!game || game.archivedAt !== undefined) throw fail('育てている子がいません');
+    if (!(counts[itemId] > 0)) throw fail('そのアイテムを持っていません');
+    if (!(ms > 0)) throw fail('今は使えません');
+    counts[itemId] -= 1;
+    if (counts[itemId] === 0) delete counts[itemId];
+    const uses = [...(game.itemUses ?? []), { itemId, at: now, ms }].slice(-200);
+    const updated: GameState = { ...game, timeBonusMs: (game.timeBonusMs ?? 0) + ms, itemUses: uses, updatedAt: now };
+    meta.put({ key: INVENTORY_KEY, counts });
+    games.put(updated);
+    await txDone(tx);
+    return { game: updated, inventory: counts };
+  }
+
+  /** Receive a creature's thank-you present once; later calls return the stored one. */
+  async claimGift(gameId: string, gift: GiftEntry[], now: number): Promise<{ game: GameState; inventory: Inventory; fresh: boolean }> {
+    const tx = this.tx([STORES.meta, STORES.games], 'readwrite');
+    const meta = tx.objectStore(STORES.meta);
+    const games = tx.objectStore(STORES.games);
+    const rec = (await reqToPromise(meta.get(INVENTORY_KEY))) as { key: string; counts: Inventory } | undefined;
+    const game = (await reqToPromise(games.get(gameId))) as GameState | undefined;
+    const counts = { ...(rec?.counts ?? STARTER_PACK) };
+    if (!game) {
+      try { tx.abort(); } catch { /* already finished */ }
+      throw new Error('個体が見つかりません');
+    }
+    if (game.giftClaimedAt !== undefined) {
+      await txDone(tx);
+      return { game, inventory: counts, fresh: false };
+    }
+    for (const g of gift) counts[g.itemId] = (counts[g.itemId] ?? 0) + g.count;
+    const updated: GameState = { ...game, gift, giftClaimedAt: now };
+    meta.put({ key: INVENTORY_KEY, counts });
+    games.put(updated);
+    await txDone(tx);
+    return { game: updated, inventory: counts, fresh: true };
   }
 
   async putMilestone(m: Milestone): Promise<void> {

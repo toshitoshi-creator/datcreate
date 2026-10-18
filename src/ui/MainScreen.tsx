@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { TIME_OF_DAY_LABEL, WEATHER_LABEL } from '../core/environment';
-import { elapsedParts, formatCountdown, nextGrowthAt, timeOfDayFromHour } from '../core/time';
+import { elapsedParts, formatCountdown, nextGrowthAt, scheduleStart, timeOfDayFromHour } from '../core/time';
 import type { ControllerState } from '../engine/gameController';
 import { CreatureView, type CreatureViewHandle } from './CreatureView';
 import { CompletionDialog } from './CompletionDialog';
+import { ItemSheet } from './ItemSheet';
 import { DevPanel } from './DevPanel';
 import { useNow, useSettings } from './hooks';
 import type { AppServices } from './services';
@@ -21,6 +22,14 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
   const nowFn = useCallback(() => clock.now(), [clock]);
   const now = useNow(nowFn, 1000);
   const view = useRef<CreatureViewHandle>(null);
+  const [sheet, setSheet] = useState<'food' | 'toy' | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout>>();
+  const showToast = (msg: string) => {
+    setToast(msg);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 3200);
+  };
 
   // The 1 s timer only drives the display and *asks* whether growth is due;
   // what is due is computed from the stored start time and the current time.
@@ -45,7 +54,7 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
 
   const game = state.game!;
   const el = elapsedParts(game.startedAt, now);
-  const next = nextGrowthAt(game.startedAt, game.lastProcessedGrowthIndex);
+  const next = nextGrowthAt(scheduleStart(game), game.lastProcessedGrowthIndex);
   const remaining = next - now;
   const tod = timeOfDayFromHour(new Date(now).getHours());
   const weather = state.weatherLog?.weather ?? 'unknown';
@@ -97,9 +106,19 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
       </div>
 
       <footer className="hud-bottom">
-        <div className="count">
-          <span data-testid="dot-count">{state.pixelCount.toLocaleString()}</span>
-          <small> dots</small>
+        <div className="count-row">
+          <div className="count">
+            <span data-testid="dot-count">{state.pixelCount.toLocaleString()}</span>
+            <small> dots</small>
+          </div>
+          <div className="care-actions">
+            <button className="care-btn" data-testid="open-food" onClick={() => setSheet('food')} disabled={state.completion === 'complete'}>
+              <span aria-hidden>🍽</span> ごはん
+            </button>
+            <button className="care-btn" data-testid="open-toy" onClick={() => setSheet('toy')} disabled={state.completion === 'complete'}>
+              <span aria-hidden>🎈</span> あそぶ
+            </button>
+          </div>
         </div>
         <dl className="stats">
           <div>
@@ -117,9 +136,33 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
         </dl>
       </footer>
 
+      {toast && (
+        <div className="toast" role="status" data-testid="item-toast">
+          {toast}
+        </div>
+      )}
+
+      {sheet && (
+        <ItemSheet
+          kind={sheet}
+          inventory={state.inventory}
+          onClose={() => setSheet(null)}
+          onUse={async (id) => {
+            try {
+              const ev = await controller.useItem(id);
+              setSheet(null);
+              showToast(`${ev.item.icon} ${ev.item.name}${ev.item.kind === 'food' ? 'をあげた！' : 'であそんだ！'} 次の成長が${Math.round(ev.ms / 60_000)}分はやくなったよ`);
+            } catch (e) {
+              showToast((e as Error).message);
+            }
+          }}
+        />
+      )}
+
       {state.completion === 'complete' && !hidden && (
         <CompletionDialog
           count={state.pixelCount}
+          gift={state.game?.gift ?? null}
           suggestName={() => controller.suggestName()}
           onSave={(name) => controller.retireToCollection(name)}
           onContinue={() => controller.continueGrowing()}

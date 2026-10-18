@@ -4,7 +4,8 @@ import { detectMilestones, sortMilestones } from '../core/milestones';
 import type { CreatureStyle } from '../core/genome';
 import { COOL_SPECIES, CUTE_SPECIES, type Species } from '../core/species';
 import { freshSeed, hash32 } from '../core/rng';
-import { dueGrowthIndex, growthTime, timeOfDayFromHour } from '../core/time';
+import { dueGrowthIndex, growthTime, nextGrowthAt, scheduleStart, timeOfDayFromHour } from '../core/time';
+import { ITEM_BY_ID, MIN_WAIT_AFTER_ITEM_MS, giftFor, type ItemDef, type Inventory } from '../core/items';
 import type { EnvUsed, EnvironmentLog, FetchStatus, GameState, Milestone, Pixel } from '../core/types';
 import { GrowthConflictError, type GameRepository } from '../data/repository';
 import type { SettingsStore } from '../data/settings';
@@ -31,6 +32,14 @@ export interface ControllerState {
    * paused); 'continuing': the player chose to keep growing.
    */
   completion: Completion;
+  /** Item counts (shared by all creatures). */
+  inventory: Inventory;
+}
+
+export interface ReactionEvent {
+  item: ItemDef;
+  /** How much earlier the next growth now comes. */
+  ms: number;
 }
 
 export type Completion = 'growing' | 'complete' | 'continuing';
@@ -127,6 +136,7 @@ export class GameController {
     clockWarning: false,
     locationStatus: null,
     completion: 'growing',
+    inventory: {},
   };
   private stateListeners = new Set<(s: ControllerState) => void>();
   private pixelListeners = new Set<(e: PixelEvent) => void>();
@@ -154,6 +164,14 @@ export class GameController {
     return () => this.stateListeners.delete(fn);
   }
 
+  private reactionListeners = new Set<(e: ReactionEvent) => void>();
+
+  /** Fired when an item is used (for the creature's reaction animation). */
+  onReaction(fn: (e: ReactionEvent) => void): () => void {
+    this.reactionListeners.add(fn);
+    return () => this.reactionListeners.delete(fn);
+  }
+
   onPixels(fn: (e: PixelEvent) => void): () => void {
     this.pixelListeners.add(fn);
     return () => this.pixelListeners.delete(fn);
@@ -179,6 +197,7 @@ export class GameController {
     try {
       this.envLogs = await this.deps.repo.recentEnvironmentLogs(72);
       this.updateWeatherState();
+      this.setState({ inventory: await this.deps.repo.getInventory() });
       const game = await this.deps.repo.getActiveGame();
       if (!game) {
         this.setState({ status: 'no-game' });
@@ -211,6 +230,7 @@ export class GameController {
     this.achieved = new Set(milestones.map((m) => m.id));
     this.setState({ status: 'ready', error: null, game, pixelCount: pixels.length, milestones, catchUp: null });
     this.emitPixels(pixels, 'initial');
+    void this.maybeClaimGift();
   }
 
   /** Start a new individual. 'random' picks a style from the seed. */
@@ -248,7 +268,7 @@ export class GameController {
   /** Cheap check used by the display timer. */
   isGrowthDue(now = this.deps.clock.now()): boolean {
     const g = this.state.game;
-    return !!g && this.state.status === 'ready' && Math.min(growthCap(g), dueGrowthIndex(g.startedAt, now)) > g.lastProcessedGrowthIndex;
+    return !!g && this.state.status === 'ready' && Math.min(growthCap(g), dueGrowthIndex(scheduleStart(g), now)) > g.lastProcessedGrowthIndex;
   }
 
   /** Generate and persist every due slot. Safe to call concurrently. */
@@ -289,7 +309,7 @@ export class GameController {
       this.setState({ clockWarning: false });
     }
 
-    const due = Math.min(growthCap(game), dueGrowthIndex(game.startedAt, now));
+    const due = Math.min(growthCap(game), dueGrowthIndex(scheduleStart(game), now));
     const last = game.lastProcessedGrowthIndex;
     if (due <= last) return 0;
 
@@ -305,7 +325,7 @@ export class GameController {
         const pixels: Pixel[] = [];
         const milestones: Milestone[] = [];
         for (let i = from; i <= to; i++) {
-          const createdAt = growthTime(game.startedAt, i);
+          const createdAt = growthTime(scheduleStart(game), i);
           const slot = this.envForSlot(createdAt, settings);
           const r = this.sim.generateNext({ createdAt, env: slot.env, environmentSnapshotId: slot.id });
           pixels.push(r.pixel);
@@ -332,7 +352,42 @@ export class GameController {
     } finally {
       this.setState({ catchUp: null });
     }
+    await this.maybeClaimGift();
     return added;
+  }
+
+  // ---- items & gifts ---------------------------------------------------------
+
+  /**
+   * Give the creature an item. It never adds a dot: it pulls the next growth
+   * (and every later hourly slot) earlier by the item's minutes, but never
+   * closer than a minute from now.
+   */
+  async useItem(itemId: string): Promise<ReactionEvent> {
+    const item = ITEM_BY_ID.get(itemId);
+    if (!item) throw new Error('不明なアイテムです');
+    if (this.growing) await this.growing;
+    const g = this.state.game;
+    if (!g || this.state.status !== 'ready') throw new Error('育てている子がいません');
+    if (this.state.completion === 'complete') throw new Error('この子は完成しています。新しい子を育てるか、育て続けるを選んでね');
+    if (!((this.state.inventory[itemId] ?? 0) > 0)) throw new Error('そのアイテムを持っていません');
+    const now = this.deps.clock.now();
+    const remaining = nextGrowthAt(scheduleStart(g), g.lastProcessedGrowthIndex) - now;
+    const ms = Math.min(item.minutes * 60_000, remaining - MIN_WAIT_AFTER_ITEM_MS);
+    if (ms <= 0) throw new Error('もうすぐ大きくなるよ。少し待ってから使ってね');
+    const { game, inventory } = await this.lock(() => this.deps.repo.useItem(g.gameId, itemId, Math.floor(ms), now));
+    this.setState({ game, inventory });
+    const ev = { item, ms: Math.floor(ms) };
+    for (const l of this.reactionListeners) l(ev);
+    return ev;
+  }
+
+  /** Receive the thank-you present once the creature is complete. */
+  private async maybeClaimGift(): Promise<void> {
+    const g = this.state.game;
+    if (!g || g.giftClaimedAt !== undefined || completionOf(g) === 'growing') return;
+    const { game, inventory } = await this.deps.repo.claimGift(g.gameId, giftFor(g.initialSeed), this.deps.clock.now());
+    if (this.state.game?.gameId === game.gameId) this.setState({ game, inventory });
   }
 
   /** Pick up growth written by another tab, or a reset/import elsewhere. */

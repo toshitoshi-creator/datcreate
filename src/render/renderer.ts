@@ -23,7 +23,9 @@ const OUTLINE = '#1c1528';
 const POP_MS = 520;
 const REVEAL_MS = 260;
 const INTRO_MS = 900;
-const REVEAL_FRAMES = 150; // offline growth is revealed over ~2.5 s at most
+const REVEAL_FRAMES = 150;
+const BREATH_MS = 3200;
+const REACT_MS = 1100; // offline growth is revealed over ~2.5 s at most
 
 interface Anim {
   p: Pixel;
@@ -66,6 +68,8 @@ export class CreatureRenderer {
   private raf = 0;
   private cam: Camera = { zoom: 24, cx: 0.5, cy: 0.5 };
   private auto = true;
+  private reaction: { kind: 'food' | 'toy'; icon: string; start: number } | null = null;
+  private idleTimer = 0;
   private bottomInset = 0;
   animationEnabled = true;
   outlineEnabled = true;
@@ -264,6 +268,7 @@ export class CreatureRenderer {
   }
 
   destroy() {
+    if (this.idleTimer) clearTimeout(this.idleTimer);
     if (this.raf) cancelAnimationFrame(this.raf);
     this.raf = 0;
     this.onCameraChange = null;
@@ -309,6 +314,14 @@ export class CreatureRenderer {
     if (this.introStart !== null) {
       if (now - this.introStart >= INTRO_MS) this.introStart = null;
       more = true;
+    }
+    if (this.reaction) more = true;
+    if (this.animationEnabled && this.bounds && !more && !this.idleTimer && typeof document !== 'undefined' && document.visibilityState !== 'hidden') {
+      // idle breathing keeps going, at a gentle frame rate
+      this.idleTimer = setTimeout(() => {
+        this.idleTimer = 0;
+        this.requestRender();
+      }, 33) as unknown as number;
     }
 
     const dt = performance.now() - t0;
@@ -358,9 +371,47 @@ export class CreatureRenderer {
       ctx.fillRect(cx - r, cy - r, 2 * r, 2 * r);
     }
 
+    // breathing + item reactions: squash and stretch anchored at the feet (display only)
+    let reactP = -1;
+    let anchorX = cssW / 2, anchorY = cssH / 2, topY = cssH / 2;
+    if (b) {
+      anchorX = toSX((b.minX + b.maxX + 1) / 2);
+      anchorY = toSY(b.maxY + 1);
+      topY = toSY(b.minY);
+      let sx = 1, sy = 1, lift = 0;
+      if (this.animationEnabled) {
+        const breath = Math.sin((now / BREATH_MS) * Math.PI * 2);
+        sx -= 0.018 * breath;
+        sy += 0.03 * breath;
+      }
+      if (this.reaction) {
+        reactP = (now - this.reaction.start) / REACT_MS;
+        if (reactP >= 1) {
+          this.reaction = null;
+          reactP = -1;
+        } else if (this.reaction.kind === 'toy') {
+          const hop = Math.sin(Math.PI * Math.min(1, reactP * 2)) * (reactP < 0.5 ? 1 : 0);
+          lift = hop * Math.min(28, (anchorY - topY) * 0.18);
+          const land = reactP > 0.5 ? Math.sin(Math.PI * (reactP - 0.5) * 2) * (1 - reactP) : 0;
+          sx += 0.12 * land;
+          sy -= 0.12 * land;
+        } else {
+          const munch = Math.sin(reactP * Math.PI * 8) * (1 - reactP);
+          sx += 0.06 * munch;
+          sy -= 0.06 * munch;
+        }
+      }
+      if (sx !== 1 || sy !== 1 || lift) {
+        ctx.translate(anchorX, anchorY - lift);
+        ctx.scale(sx, sy);
+        ctx.translate(-anchorX, -anchorY);
+      }
+    }
+
     ctx.globalAlpha = intro;
-    const wx0 = this.cam.cx - cssW / 2 / z, wy0 = this.cam.cy - cssH / 2 / z;
-    const wx1 = this.cam.cx + cssW / 2 / z, wy1 = this.cam.cy + cssH / 2 / z;
+    // a small margin so squash / stretch never clips cells at the edges
+    const wx0 = this.cam.cx - cssW / 2 / z - 2, wy0 = this.cam.cy - cssH / 2 / z - 2;
+    const wx1 = this.cam.cx + cssW / 2 / z + 2, wy1 = this.cam.cy + cssH / 2 / z + 2;
     if (z >= 7) {
       // Zoomed in: few cells are visible, so draw them individually with a
       // small gap so each dot reads as a square.
@@ -415,8 +466,27 @@ export class CreatureRenderer {
         ctx.strokeRect(px - ring / 2, py - ring / 2, ring, ring);
       }
     }
+    // the item floats up from the creature's head, with a little heart
+    if (this.reaction && reactP >= 0) {
+      ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      const rise = reactP * 46;
+      ctx.globalAlpha = Math.max(0, 1 - reactP * 1.1);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '30px system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
+      ctx.fillText(this.reaction.icon, anchorX, Math.max(30, topY - 22 - rise));
+      ctx.font = '18px system-ui, sans-serif';
+      ctx.fillStyle = '#ff8fb1';
+      ctx.fillText('♥', anchorX + 26 + Math.sin(reactP * 9) * 4, Math.max(20, topY - 10 - rise * 1.3));
+    }
     ctx.globalAlpha = 1;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
+  /** Play the creature's reaction to an item (display only). */
+  react(kind: 'food' | 'toy', icon: string) {
+    this.reaction = { kind, icon, start: performance.now() };
+    this.requestRender();
   }
 }
 
