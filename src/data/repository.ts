@@ -7,6 +7,7 @@ import { validateSave, type SaveFile } from './saveFile';
 
 const ACTIVE_KEY = 'activeGameId';
 const INVENTORY_KEY = 'inventory';
+const BATTLE_REWARD_KEY = 'battleReward';
 
 export class GrowthConflictError extends Error {
   constructor(message: string) {
@@ -285,6 +286,27 @@ export class GameRepository {
     games.put(updated);
     await txDone(tx);
     return { game: updated, inventory: counts, fresh: true };
+  }
+
+  /**
+   * Give the battle reward at most once per local day. Returns the new
+   * inventory, or null when today's reward was already given.
+   */
+  async grantDailyBattleReward(dayKey: string, itemId: string): Promise<Inventory | null> {
+    const tx = this.tx([STORES.meta], 'readwrite');
+    const meta = tx.objectStore(STORES.meta);
+    const last = (await reqToPromise(meta.get(BATTLE_REWARD_KEY))) as { key: string; day: string } | undefined;
+    if (last?.day === dayKey) {
+      await txDone(tx);
+      return null;
+    }
+    const rec = (await reqToPromise(meta.get(INVENTORY_KEY))) as { key: string; counts: Inventory } | undefined;
+    const counts = { ...(rec?.counts ?? STARTER_PACK) };
+    counts[itemId] = (counts[itemId] ?? 0) + 1;
+    meta.put({ key: INVENTORY_KEY, counts });
+    meta.put({ key: BATTLE_REWARD_KEY, day: dayKey });
+    await txDone(tx);
+    return counts;
   }
 
   async putMilestone(m: Milestone): Promise<void> {

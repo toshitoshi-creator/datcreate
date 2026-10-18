@@ -537,3 +537,31 @@ describe('GameController: items and gifts', () => {
     await b.controller.useItem(game.gift![0].itemId); // usable again while growing on
   });
 });
+
+describe('GameController: battle reward', () => {
+  it('the first win of a day gives one ordinary item; later wins that day and losses give nothing', async () => {
+    const clock = new FakeClock(T0);
+    const h = await makeHarness({ clock });
+    await h.controller.startNewGame();
+    const total = () => Object.values(h.controller.getState().inventory).reduce((a, b) => a + b, 0);
+    const before = total();
+    expect(await h.controller.rewardBattle(false)).toBeNull();
+    const item = await h.controller.rewardBattle(true);
+    expect(item).not.toBeNull();
+    expect(item!.rare).toBe(false);
+    expect(total()).toBe(before + 1);
+    expect(await h.controller.rewardBattle(true)).toBeNull();
+    expect(total()).toBe(before + 1);
+    clock.advance(DAY_MS);
+    expect(await h.controller.rewardBattle(true)).not.toBeNull();
+    expect(total()).toBe(before + 2);
+    expect(h.controller.getState().pixelCount).toBe(1); // battles never grow the creature
+  });
+
+  it('current stats come from the dots', async () => {
+    const h = await makeHarness({ clock: new FakeClock(T0) });
+    await h.controller.startNewGame();
+    const s = h.controller.currentStats()!;
+    expect(s.strength + s.defense + s.speed + s.luck).toBe(100);
+  });
+});

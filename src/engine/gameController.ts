@@ -1,11 +1,11 @@
 import { CLOCK_ROLLBACK_TOLERANCE_MS, COMPLETE_GROWTH_INDEX, CURRENT_GENERATOR_VERSION, NAME_MAX_LENGTH, SCHEMA_VERSION, WEATHER_VALID_MS } from '../core/constants';
 import { Simulation } from '../core/generator';
 import { detectMilestones, sortMilestones } from '../core/milestones';
-import type { CreatureStyle } from '../core/genome';
-import { COOL_SPECIES, CUTE_SPECIES, type Species } from '../core/species';
 import { freshSeed, hash32 } from '../core/rng';
+import { resolveStyle, type StyleChoice } from '../core/looks';
 import { dueGrowthIndex, growthTime, nextGrowthAt, scheduleStart, timeOfDayFromHour } from '../core/time';
-import { ITEM_BY_ID, MIN_WAIT_AFTER_ITEM_MS, giftFor, type ItemDef, type Inventory } from '../core/items';
+import { ITEMS, ITEM_BY_ID, MIN_WAIT_AFTER_ITEM_MS, giftFor, type ItemDef, type Inventory } from '../core/items';
+import { statsFromColors, type Stats } from '../core/stats';
 import type { EnvUsed, EnvironmentLog, FetchStatus, GameState, Milestone, Pixel } from '../core/types';
 import { GrowthConflictError, type GameRepository } from '../data/repository';
 import type { SettingsStore } from '../data/settings';
@@ -92,27 +92,7 @@ export function normalizeName(name: string): string {
   return clean;
 }
 
-/**
- * Player choice -> concrete look. 'cute' / 'cool' become one of that family's
- * looks: the plain look, its ghost, or one of its animals. 'random' picks a
- * family first. Concrete styles (tests, imports) pass through unchanged.
- */
-export function resolveStyle(choice: StyleChoice, initialSeed: number): { style: CreatureStyle; species?: Species } {
-  const roll = hash32(initialSeed, 'style') % 1000;
-  const family = choice === 'random' ? (roll % 2 ? 'cool' : 'cute') : choice;
-  if (family !== 'cute' && family !== 'cool') return { style: family };
-  const r = Math.floor(roll / 2) % 100; // independent of the family bit
-  if (family === 'cute') {
-    if (r < 18) return { style: 'cute' };
-    if (r < 32) return { style: 'ghost' };
-    return { style: 'cute', species: CUTE_SPECIES[(r - 32) % CUTE_SPECIES.length] };
-  }
-  if (r < 16) return { style: 'cool' };
-  if (r < 30) return { style: 'ghostCool' };
-  return { style: 'cool', species: COOL_SPECIES[(r - 30) % COOL_SPECIES.length] };
-}
-
-export type StyleChoice = 'cute' | 'cool' | 'random' | CreatureStyle;
+export { resolveStyle, type StyleChoice } from '../core/looks';
 
 /**
  * Orchestrates the game. Growth correctness is derived only from the stored
@@ -380,6 +360,28 @@ export class GameController {
     const ev = { item, ms: Math.floor(ms) };
     for (const l of this.reactionListeners) l(ev);
     return ev;
+  }
+
+  /** Stats of the creature being raised now (from its dots). */
+  currentStats(): Stats | null {
+    return this.pixels.length ? statsFromColors(this.pixels.map((p) => p.color)) : null;
+  }
+
+  /**
+   * After a battle: the first win of each local day earns one ordinary item.
+   * Returns the item given, or null.
+   */
+  async rewardBattle(won: boolean): Promise<ItemDef | null> {
+    if (!won) return null;
+    const now = this.deps.clock.now();
+    const d = new Date(now);
+    const day = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    const pool = ITEMS.filter((i) => !i.rare);
+    const item = pool[hash32(now, 'battle-reward') % pool.length];
+    const inventory = await this.deps.repo.grantDailyBattleReward(day, item.id);
+    if (!inventory) return null;
+    this.setState({ inventory });
+    return item;
   }
 
   /** Receive the thank-you present once the creature is complete. */

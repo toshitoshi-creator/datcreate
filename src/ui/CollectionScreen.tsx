@@ -3,7 +3,9 @@ import { DAY_MS } from '../core/constants';
 import type { GameState, Pixel } from '../core/types';
 import type { GameController } from '../engine/gameController';
 import { drawThumbnail } from '../render/renderer';
+import { statsFromColors, type Stats } from '../core/stats';
 import { NameForm } from './NameForm';
+import { StatsCard } from './StatsCard';
 
 const fmt = new Intl.DateTimeFormat('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' });
 
@@ -121,6 +123,7 @@ function CollectionDetail({ game, number, controller, onDeleted, onRenamed }: De
         </div>
       )}
       <Thumb controller={controller} game={game} size={Math.min(340, (globalThis.innerWidth || 360) - 32)} />
+      <DetailStats controller={controller} gameId={game.gameId} />
       <dl className="detail-facts">
         <div>
           <dt>ドット</dt>
@@ -163,4 +166,16 @@ function CollectionDetail({ game, number, controller, onDeleted, onRenamed }: De
       {error && <p className="notice err">{error}</p>}
     </div>
   );
+}
+
+function DetailStats({ controller, gameId }: { controller: GameController; gameId: string }) {
+  const [stats, setStats] = useState<Stats | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void controller.loadCollectionPixels(gameId).then((p) => alive && setStats(statsFromColors(p.map((x) => x.color))));
+    return () => {
+      alive = false;
+    };
+  }, [controller, gameId]);
+  return stats ? <StatsCard stats={stats} testId="collection-stats" /> : null;
 }

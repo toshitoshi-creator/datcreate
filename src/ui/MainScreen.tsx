@@ -12,7 +12,7 @@ import type { AppServices } from './services';
 interface Props {
   services: AppServices;
   state: ControllerState;
-  onOpen: (screen: 'history' | 'settings' | 'collection') => void;
+  onOpen: (screen: 'history' | 'settings' | 'collection' | 'battle') => void;
   hidden: boolean;
 }
 
@@ -75,6 +75,10 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
           <button className="icon-btn" data-testid="open-collection" onClick={() => onOpen('collection')} aria-label="図鑑">
             <span aria-hidden>▦</span>
             <small>図鑑</small>
+          </button>
+          <button className="icon-btn" data-testid="open-battle" onClick={() => onOpen('battle')} aria-label="対決">
+            <span aria-hidden>⚔</span>
+            <small>対決</small>
           </button>
           <button className="icon-btn" data-testid="open-history" onClick={() => onOpen('history')} aria-label="成長履歴">
             <span aria-hidden>☰</span>

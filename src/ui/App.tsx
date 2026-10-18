@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { BattleScreen } from './BattleScreen';
 import { CollectionScreen } from './CollectionScreen';
 import { HistoryScreen } from './HistoryScreen';
 import { MainScreen } from './MainScreen';
@@ -27,7 +28,7 @@ export function App() {
   return <Game services={services} />;
 }
 
-type Screen = 'main' | 'history' | 'settings' | 'collection';
+type Screen = 'main' | 'history' | 'settings' | 'collection' | 'battle';
 
 function Game({ services }: { services: AppServices }) {
   const state = useControllerState(services.controller);
@@ -54,6 +55,7 @@ function Game({ services }: { services: AppServices }) {
       {screen === 'history' && <HistoryScreen services={services} state={state} onClose={() => setScreen('main')} />}
       {screen === 'settings' && <SettingsScreen services={services} state={state} onClose={() => setScreen('main')} />}
       {screen === 'collection' && <CollectionScreen controller={services.controller} onClose={() => setScreen('main')} />}
+      {screen === 'battle' && <BattleScreen controller={services.controller} onClose={() => setScreen('main')} />}
     </>
   );
 }

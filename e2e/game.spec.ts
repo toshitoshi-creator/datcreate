@@ -293,6 +293,35 @@ test('feeding and playing: no dot is added, the next growth comes sooner, stock 
   await expect(count(page)).toHaveText('2');
 });
 
+test('a small battle against a wild dot, with stats from colours and no names revealed', async ({ page }) => {
+  await startGame(page);
+  await jump(page, 10 * 24 * HOUR);
+  await expect(count(page)).toHaveText('241');
+  await page.getByTestId('open-battle').click();
+  const sum = async (id: string) => {
+    const box = page.getByTestId(id);
+    const v = await Promise.all(['strength', 'defense', 'speed', 'luck'].map(async (k) => Number(await box.getByTestId(`stat-${k}`).textContent())));
+    return v.reduce((a, b) => a + b, 0);
+  };
+  await expect(page.getByTestId('their-stats')).toBeVisible();
+  expect(await sum('mine-stats')).toBe(100);
+  expect(await sum('their-stats')).toBe(100);
+  expect(Number(await page.getByTestId('mine-stats').getByTestId('stat-hp').textContent())).toBeLessThanOrEqual(200);
+  await expect(page.getByTestId('battle-screen')).not.toContainText(HIDDEN_WORDS);
+  await page.screenshot({ path: 'test-results/shots/battle-pick.png' });
+  await page.getByTestId('start-battle').click();
+  await expect(page.getByTestId('battle-log').locator('li').first()).toBeVisible();
+  await page.waitForTimeout(1400);
+  await page.screenshot({ path: 'test-results/shots/battle-fight.png' });
+  await page.getByTestId('skip-battle').click();
+  await expect(page.getByTestId('battle-result')).toContainText(/かち|まけ|ひきわけ/);
+  await expect(page.getByTestId('battle-screen')).not.toContainText(HIDDEN_WORDS);
+  await page.screenshot({ path: 'test-results/shots/battle-result.png' });
+  await page.getByTestId('close-battle').click();
+  await page.getByTestId('close-battle').click();
+  await expect(count(page)).toHaveText('241'); // battles never grow the creature
+});
+
 test('production build exposes no time-travel controls', async ({ page }) => {
   await startGame(page);
   await expect(page.locator('.dev-panel')).toHaveCount(0);
