@@ -1,4 +1,5 @@
 import { GEMS } from '../core/gems';
+import { STICKER_BY_ID } from '../core/stickers';
 import { HEX_COLOR_RE } from '../core/color';
 import { SAVE_FORMAT, SCHEMA_VERSION } from '../core/constants';
 import { isSupportedGenerator } from '../core/generator';
@@ -130,6 +131,7 @@ export function validateSave(input: unknown): ValidationResult {
       ? { boosts: (g.boosts as { boostId: string; at: number; ms: number }[]).map((b) => ({ boostId: b.boostId, at: b.at, ms: b.ms })) }
       : {}),
     ...(g.slotMs === 30 * 60_000 || g.slotMs === 3_600_000 ? { slotMs: g.slotMs as number } : {}),
+    ...(typeof g.sticker === 'string' && STICKER_BY_ID.has(g.sticker) ? { sticker: g.sticker } : {}),
     ...(isNum(g.giftClaimedAt) ? { giftClaimedAt: g.giftClaimedAt as number } : {}),
     ...(Array.isArray(g.gift) ? { gift: (g.gift as { itemId: string; count: number }[]).filter((e) => isObj(e) && isStr(e.itemId) && isInt(e.count)) } : {}),
   };

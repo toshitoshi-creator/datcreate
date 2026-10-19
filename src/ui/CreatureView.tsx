@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { STICKER_BY_ID } from '../core/stickers';
 import { hexToHsl } from '../core/color';
 import type { Settings } from '../core/types';
 import type { GameController } from '../engine/gameController';
@@ -60,6 +61,10 @@ export const CreatureView = forwardRef<CreatureViewHandle, Props>(function Creat
     });
 
     const offReaction = controller.onReaction((e) => r.react(e.item.kind, e.item.icon));
+    // the creature's sticker, kept in step with the game
+    const showSticker = () => r.setSticker(STICKER_BY_ID.get(controller.getState().game?.sticker ?? '')?.icon ?? null);
+    showSticker();
+    const offSticker = controller.subscribe(showSticker);
     const onVisible = () => r.requestRender(); // resume breathing when the page comes back
     document.addEventListener('visibilitychange', onVisible);
 
@@ -147,6 +152,7 @@ export const CreatureView = forwardRef<CreatureViewHandle, Props>(function Creat
       clearTimeout(saveTimer);
       offPixels();
       offReaction();
+      offSticker();
       document.removeEventListener('visibilitychange', onVisible);
       ro.disconnect();
       r.destroy();

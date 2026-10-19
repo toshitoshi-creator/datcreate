@@ -16,6 +16,10 @@ const PURCHASES_KEY = 'purchases';
 const AD_REWARD_KEY = 'adRewards';
 /** Practice ranked battles: the RankedRecord, and the representative's gameId. */
 const RANKED_KEY = 'ranked';
+/** Medals from battles: { count, day, wildToday }. */
+const MEDALS_KEY = 'medals';
+/** Sticker counts not on a creature: { counts }. */
+const STICKERS_KEY = 'stickers';
 const CHAMPION_KEY = 'champion';
 const BATTLE_REWARD_KEY = 'battleReward';
 
@@ -226,10 +230,98 @@ export class GameRepository {
       try { tx.abort(); } catch { /* already finished */ }
       throw new Error('図鑑の個体ではありません');
     }
+    await this.returnStickerInTx(tx, gameId);
     await this.deleteGameInTx(tx, gameId);
     const champ = await reqToPromise(tx.objectStore(STORES.meta).get(CHAMPION_KEY));
     if (champ?.value === gameId) tx.objectStore(STORES.meta).delete(CHAMPION_KEY);
     await txDone(tx);
+  }
+
+  /** Inside a transaction: put a deleted game's sticker back into the stock. */
+  private async returnStickerInTx(tx: IDBTransaction, gameId: string): Promise<void> {
+    const game = (await reqToPromise(tx.objectStore(STORES.games).get(gameId))) as GameState | undefined;
+    if (!game?.sticker) return;
+    const meta = tx.objectStore(STORES.meta);
+    const st = (await reqToPromise(meta.get(STICKERS_KEY))) as { counts: Record<string, number>; seen?: string[] } | undefined;
+    const counts = { ...(st?.counts ?? {}) };
+    counts[game.sticker] = (counts[game.sticker] ?? 0) + 1;
+    meta.put({ key: STICKERS_KEY, counts, seen: st?.seen ?? [] });
+  }
+
+  // ---- medals, gacha & stickers --------------------------------------------------
+
+  async getMedalsAndStickers(): Promise<{ medals: number; stickers: Record<string, number>; stickersSeen: string[] }> {
+    const tx = this.tx([STORES.meta]);
+    const meta = tx.objectStore(STORES.meta);
+    const m = (await reqToPromise(meta.get(MEDALS_KEY))) as { count: number } | undefined;
+    const st = (await reqToPromise(meta.get(STICKERS_KEY))) as { counts: Record<string, number>; seen?: string[] } | undefined;
+    await txDone(tx);
+    return { medals: m?.count ?? 0, stickers: st?.counts ?? {}, stickersSeen: st?.seen ?? [] };
+  }
+
+  /**
+   * Add medals for a battle. Wild-dot wins are limited to `wildCap` medals a
+   * day (`wild`: true); ranked battles are already limited by their own count.
+   */
+  async addMedals(n: number, day: string, wild: boolean, wildCap: number): Promise<{ medals: number; gained: number }> {
+    const tx = this.tx([STORES.meta], 'readwrite');
+    const meta = tx.objectStore(STORES.meta);
+    const m = ((await reqToPromise(meta.get(MEDALS_KEY))) as { count: number; day: string; wildToday: number } | undefined) ?? { count: 0, day, wildToday: 0 };
+    const wildToday = m.day === day ? m.wildToday : 0;
+    const gained = wild ? Math.max(0, Math.min(n, wildCap - wildToday)) : n;
+    const next = { key: MEDALS_KEY, count: m.count + gained, day, wildToday: wildToday + (wild ? gained : 0) };
+    meta.put(next);
+    await txDone(tx);
+    return { medals: next.count, gained };
+  }
+
+  /** Spend medals and receive the drawn stickers, atomically. */
+  async pullGacha(cost: number, stickerIds: string[]): Promise<{ medals: number; stickers: Record<string, number>; stickersSeen: string[] }> {
+    const tx = this.tx([STORES.meta], 'readwrite');
+    const meta = tx.objectStore(STORES.meta);
+    const m = (await reqToPromise(meta.get(MEDALS_KEY))) as { count: number; day: string; wildToday: number } | undefined;
+    const st = (await reqToPromise(meta.get(STICKERS_KEY))) as { counts: Record<string, number>; seen?: string[] } | undefined;
+    if (!m || m.count < cost) {
+      try { tx.abort(); } catch { /* already finished */ }
+      throw new Error('メダルが足りません');
+    }
+    const counts = { ...(st?.counts ?? {}) };
+    for (const id of stickerIds) counts[id] = (counts[id] ?? 0) + 1;
+    const seen = [...new Set([...(st?.seen ?? []), ...stickerIds])];
+    meta.put({ ...m, key: MEDALS_KEY, count: m.count - cost });
+    meta.put({ key: STICKERS_KEY, counts, seen });
+    await txDone(tx);
+    return { medals: m.count - cost, stickers: counts, stickersSeen: seen };
+  }
+
+  /**
+   * Put a sticker on a creature (or take it off with null). The sticker it
+   * had goes back to the stock; the new one is taken from it. Atomic.
+   */
+  async setSticker(gameId: string, stickerId: string | null): Promise<{ game: GameState; stickers: Record<string, number> }> {
+    const tx = this.tx([STORES.meta, STORES.games], 'readwrite');
+    const meta = tx.objectStore(STORES.meta);
+    const games = tx.objectStore(STORES.games);
+    const game = (await reqToPromise(games.get(gameId))) as GameState | undefined;
+    const st = (await reqToPromise(meta.get(STICKERS_KEY))) as { counts: Record<string, number>; seen?: string[] } | undefined;
+    const counts = { ...(st?.counts ?? {}) };
+    const fail = (msg: string) => {
+      try { tx.abort(); } catch { /* already finished */ }
+      return new Error(msg);
+    };
+    if (!game) throw fail('個体が見つかりません');
+    if (game.sticker) counts[game.sticker] = (counts[game.sticker] ?? 0) + 1;
+    if (stickerId) {
+      if (!(counts[stickerId] > 0)) throw fail('そのシールを持っていません');
+      counts[stickerId] -= 1;
+    }
+    for (const k of Object.keys(counts)) if (counts[k] <= 0) delete counts[k];
+    const { sticker: _old, ...rest } = game;
+    const updated: GameState = stickerId ? { ...rest, sticker: stickerId } : rest;
+    games.put(updated);
+    meta.put({ key: STICKERS_KEY, counts, seen: st?.seen ?? [] });
+    await txDone(tx);
+    return { game: updated, stickers: counts };
   }
 
   // ---- practice ranked battles ------------------------------------------------
@@ -531,6 +623,7 @@ export class GameRepository {
     const meta = await reqToPromise(tx.objectStore(STORES.meta).get(ACTIVE_KEY));
     const ids = new Set<string>([save.game.gameId]);
     if (meta?.value) ids.add(meta.value as string);
+    if (meta?.value && meta.value !== save.game.gameId) await this.returnStickerInTx(tx, meta.value as string);
     for (const id of ids) await this.deleteGameInTx(tx, id);
     tx.objectStore(STORES.games).put(save.game);
     const ps = tx.objectStore(STORES.pixels);
@@ -576,7 +669,10 @@ export class GameRepository {
   async resetActiveGame(): Promise<void> {
     const tx = this.tx([STORES.games, STORES.pixels, STORES.environment, STORES.milestones, STORES.meta], 'readwrite');
     const meta = await reqToPromise(tx.objectStore(STORES.meta).get(ACTIVE_KEY));
-    if (meta?.value) await this.deleteGameInTx(tx, meta.value as string);
+    if (meta?.value) {
+      await this.returnStickerInTx(tx, meta.value as string);
+      await this.deleteGameInTx(tx, meta.value as string);
+    }
     // environment logs captured before a game existed
     const env = tx.objectStore(STORES.environment);
     const r = env.index('byGame').openKeyCursor(IDBKeyRange.only('none'));

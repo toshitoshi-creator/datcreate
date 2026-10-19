@@ -4,13 +4,16 @@ import type { GameController } from '../engine/gameController';
 import { BattleScreen } from './BattleScreen';
 import { CollectionScreen } from './CollectionScreen';
 import { RankedScreen } from './RankedScreen';
+import { GachaScreen } from './GachaScreen';
+import { useControllerState } from './hooks';
 
-type View = 'hub' | 'wild' | 'collection' | 'ranked' | 'champion';
+type View = 'hub' | 'wild' | 'collection' | 'ranked' | 'champion' | 'gacha';
 
 /** The battle menu: practice ranked battles, or a free battle against a wild dot. */
 export function BattleHub({ controller, hasActive, onClose }: { controller: GameController; hasActive: boolean; onClose: () => void }) {
   const [view, setView] = useState<View>('hub');
   const [summary, setSummary] = useState<{ rating: number; champion: boolean } | null>(null);
+  const { medals } = useControllerState(controller);
   useEffect(() => {
     if (view === 'hub') void controller.rankedStatus().then((s) => setSummary({ rating: s.rec.rating, champion: !!s.champion }));
   }, [controller, view]);
@@ -18,6 +21,7 @@ export function BattleHub({ controller, hasActive, onClose }: { controller: Game
   if (view === 'wild') return <BattleScreen controller={controller} onClose={() => setView('hub')} />;
   if (view === 'collection') return <CollectionScreen controller={controller} forBattle onClose={() => setView('hub')} />;
   if (view === 'champion') return <CollectionScreen controller={controller} mode="champion" onChampionChosen={() => setView('ranked')} onClose={() => setView('ranked')} />;
+  if (view === 'gacha') return <GachaScreen controller={controller} onClose={() => setView('hub')} />;
   if (view === 'ranked') return <RankedScreen controller={controller} onPickChampion={() => setView('champion')} onClose={() => setView('hub')} />;
 
   const tier = summary ? tierOf(summary.rating) : null;
@@ -39,6 +43,11 @@ export function BattleHub({ controller, hasActive, onClose }: { controller: Game
               {tier.icon} {tier.name} {summary.rating}pt{summary.champion ? '' : '・代表をえらんでね'}
             </span>
           )}
+        </button>
+        <button className="hub-card gacha" data-testid="hub-gacha" onClick={() => setView('gacha')}>
+          <span className="hub-title">🎁 シールガチャ</span>
+          <span className="muted small">対決でもらったメダルで、シールをひこう</span>
+          <span className="hub-rank" data-testid="hub-medals">🏅 {medals.toLocaleString()} メダル</span>
         </button>
         {hasActive && (
           <button className="hub-card" data-testid="hub-wild" onClick={() => setView('wild')}>

@@ -11,7 +11,7 @@ const STEPS: { label: string; ms: number }[] = [
 ];
 
 /** Time-skip for dev builds and the trial bundle. Never rendered in the normal production build. */
-export function DevPanel({ devClock, onAdvanced }: { devClock: DevClock; onAdvanced: () => void }) {
+export function DevPanel({ devClock, onAdvanced, onMedals }: { devClock: DevClock; onAdvanced: () => void; onMedals?: () => void }) {
   const [open, setOpen] = useState(false);
   const [offset, setOffset] = useState(devClock.offsetMs);
   const adv = (ms: number) => {
@@ -35,6 +35,11 @@ export function DevPanel({ devClock, onAdvanced }: { devClock: DevClock; onAdvan
                 {s.label}
               </button>
             ))}
+            {onMedals && (
+              <button onClick={onMedals} data-testid="dev-medals">
+                🏅+100
+              </button>
+            )}
           </div>
         </div>
       )}

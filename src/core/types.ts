@@ -39,6 +39,8 @@ export interface GameState {
    * makes growth BOOST_RATE times faster until it has saved `ms`. Only appended.
    */
   boosts?: { boostId: string; at: number; ms: number }[];
+  /** Sticker put on this creature (one at most). */
+  sticker?: string;
   /** Time between dots. Missing = 1 hour (creatures started before the 30-minute pace). */
   slotMs?: number;
   /** Recent item uses (newest last, capped). */

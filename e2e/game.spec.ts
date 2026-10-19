@@ -509,3 +509,56 @@ test('shop: coins are exchanged for a pace-up item, which speeds growth without 
   await expect(count(page)).toHaveText('61');
   await expect(page.getByTestId('hud-coins')).toHaveText('450');
 });
+
+test('medals from battles, the sticker gacha, and a sticker on the creature', async ({ page }) => {
+  await startGame(page);
+  await jump(page, 3 * 24 * STEP);
+  await expect(count(page)).toHaveText('73');
+  // a wild battle shows the medal result when won
+  await page.getByTestId('open-battle').click();
+  await expect(page.getByTestId('hub-medals')).toContainText('🏅 0');
+  // medals as if earned in many battles
+  await page.evaluate(async () => {
+    const db: IDBDatabase = await new Promise((res, rej) => {
+      const r = indexedDB.open('dot-life');
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+    const tx = db.transaction(['meta'], 'readwrite');
+    tx.objectStore('meta').put({ key: 'medals', count: 120, day: 'x', wildToday: 0 });
+    await new Promise((res) => (tx.oncomplete = res));
+  });
+  await page.reload();
+  await page.getByTestId('open-battle').click();
+  await expect(page.getByTestId('hub-medals')).toContainText('🏅 120');
+  await page.getByTestId('hub-gacha').click();
+  await expect(page.getByTestId('gacha-odds')).toContainText('2%');
+  await page.getByTestId('gacha-10').click();
+  await expect(page.getByTestId('gacha-got')).toHaveCount(10);
+  await expect(page.getByTestId('medal-balance')).toHaveText('20');
+  await page.waitForTimeout(900);
+  await page.screenshot({ path: 'test-results/shots/gacha-result.png' });
+  await page.getByTestId('close-gacha').click(); // result -> gacha
+  await page.getByTestId('tab-book').click();
+  await expect(page.getByTestId('tab-book')).toContainText(/シール帳 ([1-9]|10)\/50/);
+  await page.screenshot({ path: 'test-results/shots/sticker-book.png' });
+  await page.getByTestId('close-gacha').click();
+  await page.getByTestId('close-hub').click();
+  // put one on the creature being raised
+  await page.getByTestId('open-sticker').click();
+  const first = page.locator('[data-testid^="pick-sticker-"]').first();
+  const id = (await first.getAttribute('data-testid'))!.replace('pick-sticker-', '');
+  await first.click();
+  await expect(page.getByTestId('sticker-picker')).toHaveCount(0);
+  await expect(page.getByTestId('open-sticker')).not.toContainText('🏷');
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: 'test-results/shots/sticker-on.png' });
+  await page.reload();
+  await expect(page.getByTestId('open-sticker')).not.toContainText('🏷');
+  await page.getByTestId('open-sticker').click();
+  await expect(page.getByTestId('current-sticker')).toContainText('いまのシール');
+  await page.getByTestId('remove-sticker').click();
+  await expect(page.getByTestId('open-sticker')).toContainText('🏷');
+  await page.getByTestId('open-sticker').click();
+  await expect(page.getByTestId(`pick-sticker-${id}`)).toBeVisible(); // back in the stock
+});

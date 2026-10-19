@@ -74,6 +74,8 @@ export class CreatureRenderer {
   private baked: Pixel[] = [];
   /** Precious dots among the baked ones (drawn with a sparkle on top). */
   private gems: Pixel[] = [];
+  /** Sticker shown on the body (an emoji), or null. */
+  private sticker: string | null = null;
   private bounds: Bounds | null = null;
   private pending: Pixel[] = [];
   private revealPerFrame = 1;
@@ -498,6 +500,15 @@ export class CreatureRenderer {
       ctx.globalAlpha = intro;
     }
 
+    // the sticker sits on the lower right of the body (away from the face) and moves with it (display only)
+    if (this.sticker && b) {
+      const w = b.maxX - b.minX + 1, h = b.maxY - b.minY + 1;
+      const size = clamp(Math.min(w, h) * z * 0.17, 14, 40);
+      const cx = toSX(b.maxX + 1 - w * 0.2), cy = toSY(b.maxY + 1 - h * 0.2);
+      drawSticker(ctx, this.sticker, cx, cy, size, intro);
+      ctx.globalAlpha = intro;
+    }
+
     // animating dots on top
     for (const a of this.anims) {
       const t = Math.min(1, (now - a.start) / a.dur);
@@ -532,11 +543,40 @@ export class CreatureRenderer {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 
+  /** Show a sticker (emoji) on the body, or none. */
+  setSticker(icon: string | null) {
+    if (icon === this.sticker) return;
+    this.sticker = icon;
+    this.requestRender();
+  }
+
   /** Play the creature's reaction to an item (display only). */
   react(kind: 'food' | 'toy', icon: string) {
     this.reaction = { kind, icon, start: performance.now() };
     this.requestRender();
   }
+}
+
+/** A sticker: the emoji on a white, slightly tilted round backing, like a real sticker. */
+function drawSticker(ctx: CanvasRenderingContext2D, icon: string, cx: number, cy: number, size: number, alpha = 1) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(cx, cy);
+  ctx.rotate(-0.18);
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.beginPath();
+  ctx.arc(size * 0.04, size * 0.06, size * 0.58, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#fbfaff';
+  ctx.beginPath();
+  ctx.arc(0, 0, size * 0.58, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `${Math.round(size * 0.78)}px system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
+  ctx.fillStyle = '#000';
+  ctx.fillText(icon, 0, size * 0.04);
+  ctx.restore();
 }
 
 function clamp(v: number, lo: number, hi: number) {
@@ -549,7 +589,7 @@ function easeOutBack(t: number) {
 }
 
 /** Draw a small static snapshot of the first `count` dots (history view). */
-export function drawThumbnail(canvas: HTMLCanvasElement, pixels: readonly Pixel[], count: number, opts: { outline?: boolean; maxScale?: number } = {}) {
+export function drawThumbnail(canvas: HTMLCanvasElement, pixels: readonly Pixel[], count: number, opts: { outline?: boolean; maxScale?: number; sticker?: string | null } = {}) {
   const n = Math.min(count, pixels.length);
   const ctx = canvas.getContext('2d');
   if (!ctx || !n) return;
@@ -587,4 +627,8 @@ export function drawThumbnail(canvas: HTMLCanvasElement, pixels: readonly Pixel[
     for (let oy = -1; oy <= 1; oy++) for (let ox = -1; ox <= 1; ox++) if (ox || oy) ctx.drawImage(sil, dx + ox * scale, dy + oy * scale, w * scale, h * scale);
   }
   ctx.drawImage(tmp, dx, dy, w * scale, h * scale);
+  if (opts.sticker) {
+    const size = Math.max(12, Math.min(w, h) * scale * 0.2);
+    drawSticker(ctx, opts.sticker, dx + w * scale * 0.82, dy + h * scale * 0.8, size);
+  }
 }

@@ -9,6 +9,8 @@ import { CompletionDialog } from './CompletionDialog';
 import { ItemSheet } from './ItemSheet';
 import { BoostSheet } from './BoostSheet';
 import { NewCreatureSheet } from './NewCreatureSheet';
+import { StickerPicker } from './StickerPicker';
+import { STICKER_BY_ID } from '../core/stickers';
 import { DevPanel } from './DevPanel';
 import { useNow, useSettings } from './hooks';
 import type { AppServices } from './services';
@@ -16,7 +18,7 @@ import type { AppServices } from './services';
 interface Props {
   services: AppServices;
   state: ControllerState;
-  onOpen: (screen: 'history' | 'settings' | 'collection' | 'battle' | 'shop') => void;
+  onOpen: (screen: 'history' | 'settings' | 'collection' | 'battle' | 'shop' | 'gacha') => void;
   hidden: boolean;
 }
 
@@ -26,7 +28,7 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
   const nowFn = useCallback(() => clock.now(), [clock]);
   const now = useNow(nowFn, 1000);
   const view = useRef<CreatureViewHandle>(null);
-  const [sheet, setSheet] = useState<'food' | 'toy' | 'boost' | 'new' | null>(null);
+  const [sheet, setSheet] = useState<'food' | 'toy' | 'boost' | 'new' | 'sticker' | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>();
   const showToast = (msg: string) => {
@@ -93,6 +95,9 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
               ✨ きらきら {gemCount}
             </div>
           )}
+          <button className="btn sticker-btn" data-testid="open-sticker" onClick={() => setSheet('sticker')}>
+            {STICKER_BY_ID.get(game.sticker ?? '')?.icon ?? '🏷'} シール
+          </button>
           {state.completion !== 'growing' && <div className="done-pill" data-testid="complete-badge">完成</div>}
         </div>
         <nav className="hud-actions">
@@ -187,6 +192,21 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
         </div>
       )}
 
+      {sheet === 'sticker' && (
+        <StickerPicker
+          current={game.sticker}
+          stock={state.stickers}
+          onPick={async (id) => {
+            await controller.putSticker(game.gameId, id);
+          }}
+          onOpenGacha={() => {
+            setSheet(null);
+            onOpen('gacha');
+          }}
+          onClose={() => setSheet(null)}
+        />
+      )}
+
       {sheet === 'new' && (
         <NewCreatureSheet
           count={state.pixelCount}
@@ -247,7 +267,7 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
         />
       )}
 
-      {devClock && <DevPanel devClock={devClock} onAdvanced={() => void controller.checkGrowth()} />}
+      {devClock && <DevPanel devClock={devClock} onAdvanced={() => void controller.checkGrowth()} onMedals={() => void controller.devAddMedals(100)} />}
     </div>
   );
 }

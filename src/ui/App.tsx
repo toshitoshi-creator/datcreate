@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BattleHub } from './BattleHub';
 import { ShopScreen } from './ShopScreen';
+import { GachaScreen } from './GachaScreen';
 import { CollectionScreen } from './CollectionScreen';
 import { HistoryScreen } from './HistoryScreen';
 import { MainScreen } from './MainScreen';
@@ -29,7 +30,7 @@ export function App() {
   return <Game services={services} />;
 }
 
-type Screen = 'main' | 'history' | 'settings' | 'collection' | 'battle' | 'shop';
+type Screen = 'main' | 'history' | 'settings' | 'collection' | 'battle' | 'shop' | 'gacha';
 
 function Game({ services }: { services: AppServices }) {
   const state = useControllerState(services.controller);
@@ -59,6 +60,7 @@ function Game({ services }: { services: AppServices }) {
       {screen === 'settings' && <SettingsScreen services={services} state={state} onClose={() => setScreen('main')} />}
       {screen === 'collection' && <CollectionScreen controller={services.controller} onClose={() => setScreen('main')} />}
       {screen === 'battle' && <BattleHub controller={services.controller} hasActive onClose={() => setScreen('main')} />}
+      {screen === 'gacha' && <GachaScreen controller={services.controller} onClose={() => setScreen('main')} />}
       {screen === 'shop' && <ShopScreen controller={services.controller} state={state} onClose={() => setScreen('main')} />}
     </>
   );

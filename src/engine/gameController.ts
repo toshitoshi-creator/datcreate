@@ -1,7 +1,7 @@
 import { CLOCK_ROLLBACK_TOLERANCE_MS, COMPLETE_GROWTH_INDEX, HOUR_MS, SLOT_MS, CURRENT_GENERATOR_VERSION, NAME_MAX_LENGTH, SCHEMA_VERSION, WEATHER_VALID_MS } from '../core/constants';
 import { Simulation } from '../core/generator';
 import { detectMilestones, sortMilestones } from '../core/milestones';
-import { freshSeed, hash32 } from '../core/rng';
+import { Rng, freshSeed, hash32 } from '../core/rng';
 import { resolveStyle, type StyleChoice } from '../core/looks';
 import { timeOfDayFromHour } from '../core/time';
 import { BOOST_RATE, activeBoost, dotsPerDay, dueIndexAt, effectiveTime, pendingBoostMs, slotDueAt, slotMsOf } from '../core/schedule';
@@ -9,6 +9,7 @@ import { AD_DAILY_LIMIT, AD_REWARD_COINS, BOOST_BY_ID, COIN_PACK_BY_ID, boostMs,
 import { ITEMS, ITEM_BY_ID, MIN_WAIT_AFTER_ITEM_MS, giftFor, type ItemDef, type Inventory } from '../core/items';
 import { statsOf, type Stats } from '../core/stats';
 import { rollGem } from '../core/gems';
+import { GACHA_COST, MEDALS, drawSticker, withSticker, type StickerDef } from '../core/stickers';
 import { simulateBattle, type BattleResult } from '../core/battle';
 import { RANKED_DAILY_LIMIT, applyResult, freshRecord, makeRival, rollRecord, seasonOf, type RankTier, type RankedRecord, type Rival } from '../core/ranked';
 import type { EnvUsed, EnvironmentLog, FetchStatus, GameState, Milestone, Pixel } from '../core/types';
@@ -49,6 +50,12 @@ export interface ControllerState {
   ads: 'none' | 'ads' | 'test';
   /** Rewarded ads still available today. */
   adsLeftToday: number;
+  /** Medals won in battles (spent on the sticker gacha). */
+  medals: number;
+  /** Stickers in stock (not on a creature). */
+  stickers: Record<string, number>;
+  /** Every sticker ever drawn (the sticker book). */
+  stickersSeen: string[];
 }
 
 export interface ReactionEvent {
@@ -133,6 +140,9 @@ export class GameController {
     shop: 'none',
     ads: 'none',
     adsLeftToday: 0,
+    medals: 0,
+    stickers: {},
+    stickersSeen: [],
   };
   private adPort: AdPort | null = null;
   private store: PurchasePort | null = null;
@@ -195,7 +205,7 @@ export class GameController {
     try {
       this.envLogs = await this.deps.repo.recentEnvironmentLogs(72);
       this.updateWeatherState();
-      this.setState({ inventory: await this.deps.repo.getInventory(), coins: await this.deps.repo.getCoins() });
+      this.setState({ inventory: await this.deps.repo.getInventory(), coins: await this.deps.repo.getCoins(), ...(await this.deps.repo.getMedalsAndStickers()) });
       const game = await this.deps.repo.getActiveGame();
       if (!game) {
         this.setState({ status: 'no-game' });
@@ -530,7 +540,7 @@ export class GameController {
    * Fight the rival. The result is decided and saved before it is shown, so
    * closing the app mid-battle does not undo it.
    */
-  async playRanked(championStats: Stats, championName: string, rival: Rival, rec: RankedRecord, championId: string): Promise<{ battle: BattleResult; before: number; after: number; rec: RankedRecord }> {
+  async playRanked(championStats: Stats, championName: string, rival: Rival, rec: RankedRecord, championId: string): Promise<{ battle: BattleResult; before: number; after: number; rec: RankedRecord; medals: number }> {
     const seed = hash32(`${rec.season}:${rec.day}:${rec.played}:battle`, championId);
     const battle = simulateBattle({ name: championName, stats: championStats }, { name: rival.name, stats: rival.stats }, seed);
     const result = battle.winner === 'a' ? 'win' : battle.winner === 'b' ? 'loss' : 'draw';
@@ -558,12 +568,13 @@ export class GameController {
         },
       };
     });
-    return { battle, before, after: saved.rec.rating, rec: saved.rec };
+    const medals = await this.rewardMedals('ranked', result);
+    return { battle, before, after: saved.rec.rating, rec: saved.rec, medals };
   }
 
   /** Stats of the creature being raised now (from its dots). */
   currentStats(): Stats | null {
-    return this.pixels.length ? statsOf(this.pixels) : null;
+    return this.pixels.length ? withSticker(statsOf(this.pixels), this.state.game?.sticker) : null;
   }
 
   /**
@@ -581,6 +592,49 @@ export class GameController {
     if (!inventory) return null;
     this.setState({ inventory });
     return item;
+  }
+
+  // ---- medals, gacha & stickers --------------------------------------------------
+
+  /** Medals for a finished battle. Returns how many were actually given. */
+  async rewardMedals(kind: 'wild' | 'ranked', result: 'win' | 'loss' | 'draw'): Promise<number> {
+    const n = kind === 'ranked' ? (result === 'win' ? MEDALS.rankedWin : MEDALS.rankedOther) : result === 'win' ? MEDALS.wildWin : 0;
+    if (!n) return 0;
+    const { medals, gained } = await this.deps.repo.addMedals(n, dayKey(this.deps.clock.now()), kind === 'wild', MEDALS.wildDailyCap);
+    this.setState({ medals });
+    return gained;
+  }
+
+  /** Trial / dev builds only (the time-skip panel): add medals to try the gacha. */
+  async devAddMedals(n: number): Promise<void> {
+    const { medals } = await this.deps.repo.addMedals(n, dayKey(this.deps.clock.now()), false, 0);
+    this.setState({ medals });
+  }
+
+  /** Draw the sticker gacha `times` times (10 medals each). */
+  async pullGacha(times: 1 | 10): Promise<StickerDef[]> {
+    const cost = GACHA_COST * times;
+    if (this.state.medals < cost) throw new Error('メダルが足りません');
+    const r = new Rng(freshSeed());
+    const got = Array.from({ length: times }, () => drawSticker(r));
+    const { medals, stickers, stickersSeen } = await this.deps.repo.pullGacha(cost, got.map((s) => s.id));
+    this.setState({ medals, stickers, stickersSeen });
+    return got;
+  }
+
+  /** Put a sticker on a creature (the one being raised or one in the collection); null takes it off. */
+  async putSticker(gameId: string, stickerId: string | null): Promise<GameState> {
+    const { game, stickers } = await this.lock(() => this.deps.repo.setSticker(gameId, stickerId));
+    this.setState(this.state.game?.gameId === gameId ? { game, stickers } : { stickers });
+    for (const l of this.stickerListeners) l(game);
+    return game;
+  }
+
+  private stickerListeners = new Set<(g: GameState) => void>();
+  /** Fired when a creature's sticker changes (for the renderer). */
+  onSticker(fn: (g: GameState) => void): () => void {
+    this.stickerListeners.add(fn);
+    return () => this.stickerListeners.delete(fn);
   }
 
   /** Receive the thank-you present once the creature is complete. */

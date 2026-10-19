@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { BattleResult } from '../core/battle';
 import { RANKED_DAILY_LIMIT, nextTier, seasonLabel, tierOf, type RankTier, type RankedRecord, type Rival } from '../core/ranked';
 import { statsOf } from '../core/stats';
+import { withSticker } from '../core/stickers';
 import type { GameState, Pixel } from '../core/types';
 import type { GameController } from '../engine/gameController';
-import { FighterCard, FightView, STEP_MS, type Entry } from './BattleScreen';
+import { FighterCard, FightView, MedalGain, STEP_MS, type Entry } from './BattleScreen';
 import { PixelThumb } from './PixelThumb';
 
 interface Props {
@@ -21,7 +22,7 @@ export function RankedScreen({ controller, onPickChampion, onClose }: Props) {
   const [rival, setRival] = useState<Rival | null>(null);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [fight, setFight] = useState<{ result: BattleResult; shown: number; before: number; after: number } | null>(null);
+  const [fight, setFight] = useState<{ result: BattleResult; shown: number; before: number; after: number; medals: number } | null>(null);
   const timer = useRef<ReturnType<typeof setInterval>>();
 
   const reload = async () => {
@@ -35,9 +36,9 @@ export function RankedScreen({ controller, onPickChampion, onClose }: Props) {
     return () => clearInterval(timer.current);
   }, [controller]);
 
-  const champStats = useMemo(() => (champPixels ? statsOf(champPixels) : null), [champPixels]);
+  const champStats = useMemo(() => (champPixels ? withSticker(statsOf(champPixels), status?.champion?.sticker) : null), [champPixels, status?.champion?.sticker]);
   const champ = status?.champion ?? null;
-  const me: Entry | null = champ ? { key: champ.gameId, name: champ.name ?? 'なまえのない子', pixels: champPixels } : null;
+  const me: Entry | null = champ ? { key: champ.gameId, name: champ.name ?? 'なまえのない子', pixels: champPixels, sticker: champ.sticker } : null;
   const them: Entry | null = rival ? { key: 'rival', name: rival.name, pixels: rival.pixels } : null;
 
   const search = () => {
@@ -56,7 +57,7 @@ export function RankedScreen({ controller, onPickChampion, onClose }: Props) {
     try {
       const r = await controller.playRanked(champStats, me.name, rival, status.rec, champ.gameId);
       setStatus({ rec: r.rec, champion: champ });
-      setFight({ result: r.battle, shown: 0, before: r.before, after: r.after });
+      setFight({ result: r.battle, shown: 0, before: r.before, after: r.after, medals: r.medals });
       clearInterval(timer.current);
       timer.current = setInterval(() => {
         setFight((f) => {
@@ -117,7 +118,7 @@ export function RankedScreen({ controller, onPickChampion, onClose }: Props) {
             theirStats={rival.stats}
             fight={{ result: fight.result, shown: fight.shown, reward: null }}
             onSkip={() => setFight((f) => (f ? { ...f, shown: f.result.events.length } : f))}
-            extra={<RankChange before={fight.before} after={fight.after} />}
+            extra={<><RankChange before={fight.before} after={fight.after} /><MedalGain n={fight.medals} /></>}
           />
         ) : (
           <>
@@ -164,7 +165,7 @@ export function RankedScreen({ controller, onPickChampion, onClose }: Props) {
             ) : (
               <>
                 <div className="champion-row" data-testid="champion">
-                  <PixelThumb pixels={champPixels} size={84} />
+                  <PixelThumb pixels={champPixels} size={84} sticker={champ.sticker} />
                   <div className="champion-text">
                     <div className="muted small">代表</div>
                     <div className="fighter-name">{champ.name ?? 'なまえのない子'}</div>

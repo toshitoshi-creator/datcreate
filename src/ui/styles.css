@@ -1303,3 +1303,115 @@ button {
 .has-new-btn .toast {
   bottom: calc(env(safe-area-inset-bottom) + 265px);
 }
+
+/* ---- medals, gacha & stickers ---------------------------------------------------- */
+
+.sticker-grid {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 8px;
+}
+.sticker-grid.big {
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+}
+.sticker-card {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 4px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  text-align: center;
+}
+.gacha-result .sticker-card {
+  animation: pop-in 0.35s ease-out both;
+}
+@keyframes pop-in {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+}
+.sticker-card.r2 {
+  border-color: rgba(139, 224, 176, 0.5);
+}
+.sticker-card.r3 {
+  border-color: rgba(159, 180, 255, 0.7);
+  background: rgba(159, 180, 255, 0.07);
+}
+.sticker-card.r4 {
+  border-color: rgba(255, 217, 120, 0.8);
+  background: rgba(255, 217, 120, 0.09);
+  box-shadow: 0 0 12px rgba(255, 217, 120, 0.25);
+}
+.sticker-card.unknown {
+  opacity: 0.35;
+}
+.sticker-icon {
+  font-size: 30px;
+  line-height: 1.2;
+}
+.sticker-name {
+  font-size: 12px;
+}
+.stars {
+  font-size: 11px;
+  color: #ffd978;
+  letter-spacing: -1px;
+}
+.sticker-count {
+  font-size: 12px;
+  font-weight: 600;
+}
+.new-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #0b0d16;
+  background: #ffd978;
+  border-radius: 6px;
+  padding: 1px 5px;
+}
+.gacha-machine {
+  font-size: 72px;
+  text-align: center;
+  margin: 10px 0;
+}
+.chips.tabs {
+  margin-bottom: 8px;
+}
+.odds {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  margin-top: 8px;
+}
+.odds td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--line);
+}
+.odds .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.medal-gain {
+  margin-top: 4px;
+  font-weight: 600;
+  color: #ffd978;
+}
+.sticker-btn {
+  margin-top: 6px;
+  font-size: 12px;
+  padding: 4px 10px;
+  min-height: 0;
+  border-radius: 999px;
+}

@@ -3,6 +3,7 @@ import { simulateBattle, type BattleEvent, type BattleResult, type Side } from '
 import type { ItemDef } from '../core/items';
 import { freshSeed } from '../core/rng';
 import { statsOf, type Stats } from '../core/stats';
+import { withSticker } from '../core/stickers';
 import type { GameState, Pixel } from '../core/types';
 import { growWildDot } from '../core/wild';
 import type { GameController } from '../engine/gameController';
@@ -13,6 +14,7 @@ export interface Entry {
   key: string;
   name: string;
   pixels: Pixel[] | null;
+  sticker?: string | null;
 }
 
 export const STEP_MS = 450;
@@ -43,7 +45,8 @@ export function BattleScreen({ controller, game, onClose }: Props) {
   }, [controller, game?.gameId]);
 
   const myPixels = game ? archived : controller.pixels.length ? controller.pixels : null;
-  const me: Entry | null = game || myPixels ? { key: game?.gameId ?? 'active', name: game ? game.name ?? 'なまえのない子' : 'いまの子', pixels: myPixels } : null;
+  const mySticker = game ? game.sticker : controller.getState().game?.sticker;
+  const me: Entry | null = game || myPixels ? { key: game?.gameId ?? 'active', name: game ? game.name ?? 'なまえのない子' : 'いまの子', pixels: myPixels, sticker: mySticker } : null;
 
   const myBase = game ? game.lastProcessedGrowthIndex + 1 : controller.pixels.length;
   const wildPixels = useMemo(() => {
@@ -52,10 +55,11 @@ export function BattleScreen({ controller, game, onClose }: Props) {
   }, [wildSeed, myBase]);
   const them: Entry = { key: 'wild', name: 'やせいのドット', pixels: wildPixels };
 
-  const myStats = useMemo(() => (myPixels ? statsOf(myPixels) : null), [myPixels]);
+  const myStats = useMemo(() => (myPixels ? withSticker(statsOf(myPixels), mySticker) : null), [myPixels, mySticker]);
   const theirStats = useMemo(() => statsOf(wildPixels), [wildPixels]);
 
   const [fight, setFight] = useState<{ result: BattleResult; shown: number; reward: ItemDef | null | undefined } | null>(null);
+  const [medals, setMedals] = useState<number | null>(null);
   const timer = useRef<ReturnType<typeof setInterval>>();
   useEffect(() => () => clearInterval(timer.current), []);
 
@@ -63,6 +67,7 @@ export function BattleScreen({ controller, game, onClose }: Props) {
     if (!me || !myStats) return;
     const result = simulateBattle({ name: me.name, stats: myStats }, { name: them.name, stats: theirStats }, freshSeed());
     setFight({ result, shown: 0, reward: undefined });
+    setMedals(null);
     clearInterval(timer.current);
     timer.current = setInterval(() => {
       setFight((f) => {
@@ -79,7 +84,9 @@ export function BattleScreen({ controller, game, onClose }: Props) {
   const done = !!fight && fight.shown >= fight.result.events.length;
   useEffect(() => {
     if (done && fight && fight.reward === undefined) {
-      void controller.rewardBattle(fight.result.winner === 'a').then((item) => setFight((f) => (f ? { ...f, reward: item } : f)));
+      const won = fight.result.winner === 'a';
+      void controller.rewardBattle(won).then((item) => setFight((f) => (f ? { ...f, reward: item } : f)));
+      if (won) void controller.rewardMedals('wild', 'win').then((n) => setMedals(n));
     }
   }, [done]);
 
@@ -94,7 +101,7 @@ export function BattleScreen({ controller, game, onClose }: Props) {
       </header>
       <div className="sheet-body">
         {fight && me && myStats ? (
-          <FightView me={me} them={them} myStats={myStats} theirStats={theirStats} fight={fight} onSkip={() => setFight((f) => (f ? { ...f, shown: f.result.events.length } : f))} onAgain={() => { setFight(null); setWildSeed(freshSeed()); }} />
+          <FightView me={me} them={them} myStats={myStats} theirStats={theirStats} fight={fight} onSkip={() => setFight((f) => (f ? { ...f, shown: f.result.events.length } : f))} onAgain={() => { setFight(null); setWildSeed(freshSeed()); }} extra={medals === null ? null : <MedalGain n={medals} wild />} />
         ) : !me ? (
           <p className="muted">対決できる子がいません。</p>
         ) : (
@@ -123,7 +130,7 @@ export function BattleScreen({ controller, game, onClose }: Props) {
 export function FighterCard({ entry, stats, testId }: { entry: Entry; stats: Stats | null; testId: string }) {
   return (
     <div className="fighter">
-      <PixelThumb pixels={entry.pixels} size={120} />
+      <PixelThumb pixels={entry.pixels} size={120} sticker={entry.sticker} />
       <div className="fighter-name">{entry.name}</div>
       {stats ? <StatsCard stats={stats} testId={testId} pixels={entry.pixels} /> : <div className="muted small">よみこみ中…</div>}
     </div>
@@ -173,7 +180,7 @@ export function FightView({ me, them, myStats, theirStats, fight, onSkip, onAgai
           const max = (s === 'a' ? myStats : theirStats);
           return (
             <div key={`${s}-${fight.shown}`} className={`arena-side ${hit === s ? 'hit' : ''} ${last?.actor === s && hit ? 'lunge-' + s : ''}`}>
-              <PixelThumb pixels={e.pixels} size={130} />
+              <PixelThumb pixels={e.pixels} size={130} sticker={e.sticker} />
               <div className="fighter-name">{e.name}</div>
               <Bar label="HP" value={hp[s]} max={max.hp} kind="hp" testId={`hp-${s}`} />
               <Bar label="スタミナ" value={st[s]} max={max.stamina} kind="stamina" />
@@ -224,6 +231,15 @@ function Bar({ label, value, max, kind, testId }: { label: string; value: number
       <span className="stat-value" data-testid={testId}>
         {value}
       </span>
+    </div>
+  );
+}
+
+/** Medals received for a battle. */
+export function MedalGain({ n, wild }: { n: number; wild?: boolean }) {
+  return (
+    <div className="medal-gain" data-testid="medal-gain">
+      {n > 0 ? `🏅 メダル +${n}` : wild ? '今日のメダルはここまで（やせいのドットは1日10枚まで）' : null}
     </div>
   );
 }

@@ -5,9 +5,11 @@ import type { GameState, Pixel } from '../core/types';
 import type { GameController } from '../engine/gameController';
 import { drawThumbnail } from '../render/renderer';
 import { statsOf, type Stats } from '../core/stats';
+import { STICKER_BY_ID, withSticker } from '../core/stickers';
 import { NameForm } from './NameForm';
 import { StatsCard } from './StatsCard';
 import { BattleScreen } from './BattleScreen';
+import { StickerPicker } from './StickerPicker';
 
 const fmt = new Intl.DateTimeFormat('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' });
 
@@ -62,6 +64,10 @@ export function CollectionScreen({ controller, onClose, forBattle, mode, onChamp
               void reload();
             }}
             onBattle={() => setBattling(true)}
+            onStickerChanged={(g) => {
+              setOpen(g);
+              void reload();
+            }}
             isChampion={champion === open.gameId}
             onMakeChampion={async () => {
               await controller.setChampion(open.gameId);
@@ -128,8 +134,8 @@ function Thumb({ controller, game, size, lazy }: { controller: GameController; g
     };
   }, [controller, game.gameId, visible]);
   useEffect(() => {
-    if (ref.current && pixels) drawThumbnail(ref.current, pixels, pixels.length, { outline: true, maxScale: size > 200 ? 24 : 12 });
-  }, [pixels, size]);
+    if (ref.current && pixels) drawThumbnail(ref.current, pixels, pixels.length, { outline: true, maxScale: size > 200 ? 24 : 12, sticker: STICKER_BY_ID.get(game.sticker ?? '')?.icon });
+  }, [pixels, size, game.sticker]);
   const px = Math.round(size * Math.min(3, globalThis.devicePixelRatio || 1));
   return <canvas ref={ref} width={px} height={px} className="collection-thumb" style={{ width: size, height: size }} aria-hidden />;
 }
@@ -145,11 +151,13 @@ interface DetailProps {
   onDeleted: () => void;
   onRenamed: (g: GameState) => void;
   onBattle: () => void;
+  onStickerChanged: (g: GameState) => void;
   isChampion: boolean;
   onMakeChampion: () => Promise<void>;
 }
 
-function CollectionDetail({ game, number, controller, onDeleted, onRenamed, onBattle, isChampion, onMakeChampion }: DetailProps) {
+function CollectionDetail({ game, number, controller, onDeleted, onRenamed, onBattle, onStickerChanged, isChampion, onMakeChampion }: DetailProps) {
+  const [picking, setPicking] = useState(false);
   const finished = game.lastProcessedGrowthIndex + 1 >= COMPLETE_GROWTH_INDEX + 1;
   const [confirm, setConfirm] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -177,7 +185,20 @@ function CollectionDetail({ game, number, controller, onDeleted, onRenamed, onBa
         </div>
       )}
       <Thumb controller={controller} game={game} size={Math.min(340, (globalThis.innerWidth || 360) - 32)} />
-      <DetailStats controller={controller} gameId={game.gameId} />
+      <DetailStats controller={controller} gameId={game.gameId} sticker={game.sticker} />
+      <div className="btn-row center">
+        <button className="btn" data-testid="detail-sticker" onClick={() => setPicking(true)}>
+          {STICKER_BY_ID.get(game.sticker ?? '')?.icon ?? '🏷'} シール
+        </button>
+      </div>
+      {picking && (
+        <StickerPicker
+          current={game.sticker}
+          stock={controller.getState().stickers}
+          onPick={async (id) => onStickerChanged(await controller.putSticker(game.gameId, id))}
+          onClose={() => setPicking(false)}
+        />
+      )}
       <button className="btn primary wide" data-testid="battle-with" onClick={onBattle}>
         ⚔ このドットで戦う
       </button>
@@ -238,15 +259,15 @@ function CollectionDetail({ game, number, controller, onDeleted, onRenamed, onBa
   );
 }
 
-function DetailStats({ controller, gameId }: { controller: GameController; gameId: string }) {
+function DetailStats({ controller, gameId, sticker }: { controller: GameController; gameId: string; sticker?: string }) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [pixels, setPixels] = useState<Pixel[] | null>(null);
   useEffect(() => {
     let alive = true;
-    void controller.loadCollectionPixels(gameId).then((p) => alive && (setStats(statsOf(p)), setPixels(p)));
+    void controller.loadCollectionPixels(gameId).then((p) => alive && (setStats(withSticker(statsOf(p), sticker)), setPixels(p)));
     return () => {
       alive = false;
     };
-  }, [controller, gameId]);
+  }, [controller, gameId, sticker]);
   return stats ? <StatsCard stats={stats} testId="collection-stats" pixels={pixels} /> : null;
 }
