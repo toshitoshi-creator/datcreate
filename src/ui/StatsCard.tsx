@@ -21,7 +21,7 @@ export function StatsCard({ stats, testId, pixels }: { stats: Stats; testId?: st
       </div>
       {pixels && <GemRow pixels={pixels} />}
       {pixels && pixels.length > COMPLETE_GROWTH_INDEX + 1 && (
-        <div className="stats-note muted" data-testid="stats-final">のうりょくは30日目（721ドット）で決まっています</div>
+        <div className="stats-note muted" data-testid="stats-final">のうりょくは完成した時点（721ドット）で決まっています</div>
       )}
     </div>
   );

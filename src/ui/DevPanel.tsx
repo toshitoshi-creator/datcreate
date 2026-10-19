@@ -6,7 +6,7 @@ const STEPS: { label: string; ms: number }[] = [
   { label: '+1時間', ms: HOUR_MS },
   { label: '+1日', ms: DAY_MS },
   { label: '+1週間', ms: 7 * DAY_MS },
-  { label: '+30日', ms: 30 * DAY_MS },
+  { label: '+15日', ms: 15 * DAY_MS },
   { label: '+1年', ms: 365 * DAY_MS },
 ];
 

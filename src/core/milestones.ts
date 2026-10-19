@@ -2,7 +2,7 @@ import type { ShapeAnalysis } from './analysis';
 import type { Milestone, Pixel } from './types';
 
 const COUNT_MARKS = [10, 50, 100, 300, 500, 1000, 2000, 3000, 5000, 10000, 20000, 50000, 100000];
-const DAY_MARKS = [1, 7, 30, 100, 180, 365, 500, 730, 1000, 1095, 1825, 3650];
+const DAY_MARKS = [1, 7, 15, 30, 100, 180, 365, 500, 730, 1000, 1095, 1825, 3650];
 
 export const MILESTONE_LABEL: Record<string, string> = {
   'shape:hole': '内側に小さな空白が生まれた',
@@ -32,6 +32,8 @@ export function detectMilestones(
   pixel: Pixel,
   analysis: ShapeAnalysis | null,
   achieved: Set<string>,
+  /** Dots a day at this creature's pace (48, or 24 for hourly creatures). */
+  perDay = 24,
 ): Milestone[] {
   const out: Milestone[] = [];
   const count = pixel.growthIndex + 1;
@@ -48,8 +50,8 @@ export function detectMilestones(
     });
   };
   if (COUNT_MARKS.includes(count)) add(`count:${count}`);
-  if (pixel.growthIndex > 0 && pixel.growthIndex % 24 === 0 && DAY_MARKS.includes(pixel.growthIndex / 24)) {
-    add(`day:${pixel.growthIndex / 24}`);
+  if (pixel.growthIndex > 0 && pixel.growthIndex % perDay === 0 && DAY_MARKS.includes(pixel.growthIndex / perDay)) {
+    add(`day:${pixel.growthIndex / perDay}`);
   }
   if (analysis) {
     const a = analysis;

@@ -108,7 +108,7 @@ export function SettingsScreen({ services, state, onClose }: Props) {
 
         {services.notifications && (
           <Section title="通知">
-            <Row label="完成したらお知らせ" hint="30日たって完成するとき、アプリを閉じていても通知します。ごはん・あそぶで早まった分も反映されます。">
+            <Row label="完成したらお知らせ" hint="15日たって完成するとき、アプリを閉じていても通知します。ごはん・あそぶで早まった分も反映されます。">
               <Toggle testId="toggle-notify" checked={s.notifyOnComplete} onChange={(on) => store.update({ notifyOnComplete: on })} />
             </Row>
           </Section>

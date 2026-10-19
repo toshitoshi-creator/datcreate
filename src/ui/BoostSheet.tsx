@@ -5,13 +5,15 @@ import type { Inventory } from '../core/items';
 
 interface Props {
   inventory: Inventory;
+  /** Dots a day at this creature's pace. */
+  perDay: number;
   onUse: (boostId: string) => Promise<void>;
   onOpenShop: () => void;
   onClose: () => void;
 }
 
 /** Pace-up items the player owns. Using one speeds growth up; it never adds a dot on the spot. */
-export function BoostSheet({ inventory, onUse, onOpenShop, onClose }: Props) {
+export function BoostSheet({ inventory, perDay, onUse, onOpenShop, onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<string | null>(null);
   const owned = BOOSTS.filter((b) => (inventory[b.id] ?? 0) > 0);
@@ -24,7 +26,7 @@ export function BoostSheet({ inventory, onUse, onOpenShop, onClose }: Props) {
             とじる
           </button>
         </div>
-        <p className="muted small">使うと、ドットが増えるペースが{BOOST_RATE}倍になります（1日ぶん＝約{24 / BOOST_RATE}時間で24ドット）。使ったその場ではドットは増えません。</p>
+        <p className="muted small">使うと、ドットが増えるペースが{BOOST_RATE}倍になります（1日ぶん＝約{24 / BOOST_RATE}時間で{perDay}ドット）。使ったその場ではドットは増えません。</p>
         {owned.length === 0 ? (
           <div className="item-empty">
             持っている時短アイテムがありません。

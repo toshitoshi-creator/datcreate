@@ -4,30 +4,32 @@ import { NameForm } from './NameForm';
 
 interface Props {
   count: number;
+  /** Days it took (15, or 30 for creatures started hourly). */
+  days: number;
   gift: GiftEntry[] | null;
   suggestName: () => Promise<string>;
   onSave: (name: string) => Promise<void>;
   onContinue: () => Promise<void>;
 }
 
-/** Shown once a creature reaches 30 days. Abilities are final from here; dots keep coming meanwhile. */
-export function CompletionDialog({ count, gift, suggestName, onSave, onContinue }: Props) {
+/** Shown once a creature is complete (721 dots: 15 days, or 30 for hourly creatures). Abilities are final from here; dots keep coming meanwhile. */
+export function CompletionDialog({ count, days, gift, suggestName, onSave, onContinue }: Props) {
   const [step, setStep] = useState<'choose' | 'name'>('choose');
   const [suggestion] = useState(() => suggestName()); // requested once
   const [busy, setBusy] = useState(false);
   return (
     <div className="completion" role="dialog" aria-label="完成" data-testid="completion-dialog">
       <div className="completion-card">
-        <div className="completion-eyebrow">30日目</div>
+        <div className="completion-eyebrow">{days}日目</div>
         <h2>{step === 'choose' ? '完成しました' : 'この子に名前をつけましょう'}</h2>
         {step === 'choose' ? (
           <>
             <p>
-              30日をむかえて、のうりょくが決まりました。新しい子を育てますか？
+              {days}日をむかえて、のうりょくが決まりました。新しい子を育てますか？
               <span className="muted small" data-testid="dot-count-now"> （いま {count.toLocaleString()} ドット）</span>
             </p>
             <p className="muted small" data-testid="keeps-growing-note">
-              このままにしておくとドットは増え続けて、どんどん大きくなります（のうりょくは30日目のまま変わりません）。
+              このままにしておくとドットは増え続けて、どんどん大きくなります（のうりょくは{days}日目のまま変わりません）。
             </p>
             {gift && gift.length > 0 && (
               <div className="gift" data-testid="gift">

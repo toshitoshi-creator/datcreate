@@ -129,6 +129,7 @@ export function validateSave(input: unknown): ValidationResult {
     ...(Array.isArray(g.boosts) && (g.boosts as unknown[]).every((b) => isObj(b) && isStr(b.boostId) && isNum(b.at) && isNum(b.ms) && (b.ms as number) > 0)
       ? { boosts: (g.boosts as { boostId: string; at: number; ms: number }[]).map((b) => ({ boostId: b.boostId, at: b.at, ms: b.ms })) }
       : {}),
+    ...(g.slotMs === 30 * 60_000 || g.slotMs === 3_600_000 ? { slotMs: g.slotMs as number } : {}),
     ...(isNum(g.giftClaimedAt) ? { giftClaimedAt: g.giftClaimedAt as number } : {}),
     ...(Array.isArray(g.gift) ? { gift: (g.gift as { itemId: string; count: number }[]).filter((e) => isObj(e) && isStr(e.itemId) && isInt(e.count)) } : {}),
   };

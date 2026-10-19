@@ -113,7 +113,7 @@ describe('coins and pace-up items', () => {
     await h.controller.exchangeBoost('boost10');
     await h.controller.exchangeBoost('boost10');
     await h.controller.exchangeBoost('boost1');
-    clock.advance(2 * HOUR_MS);
+    clock.advance(HOUR_MS); // a dot every 30 minutes
     await h.controller.checkGrowth();
     expect(h.controller.getState().pixelCount).toBe(3);
     const r = await h.controller.useBoost('boost10');
@@ -121,18 +121,19 @@ describe('coins and pace-up items', () => {
     await h.controller.checkGrowth();
     expect(h.controller.getState().pixelCount).toBe(3); // nothing on the spot
     expect(h.controller.getState().inventory.boost10).toBe(2);
-    clock.advance(HOUR_MS);
+    clock.advance(30 * 60_000); // half an hour at 6x = 3 hours = 6 dots
     await h.controller.checkGrowth();
     expect(h.controller.getState().pixelCount).toBe(3 + BOOST_RATE);
-    await h.controller.useBoost('boost10');
-    // 2 h used, 20 days queued: only 30 d - 2 h - 20 d is left, so the third item is cut to that
-    const third = await h.controller.useBoost('boost10');
-    expect(third.ms).toBeLessThanOrEqual(10 * DAY_MS - 2 * HOUR_MS);
-    expect(third.ms).toBeGreaterThan(9 * DAY_MS);
+    // the whole creature takes 15 days: with 10 days queued, the second item is cut to what is left (< 5 days)
+    const second = await h.controller.useBoost('boost10');
+    expect(second.ms).toBeLessThan(5 * DAY_MS);
+    expect(second.ms).toBeGreaterThan(4 * DAY_MS);
+    await expect(h.controller.useBoost('boost10')).rejects.toThrow('これ以上は短くできません');
     await expect(h.controller.useBoost('boost1')).rejects.toThrow('これ以上は短くできません');
-    expect(h.controller.getState().inventory.boost1).toBe(1); // not used up
-    // everything runs: complete after (30 days - 3 h) / (RATE - 1) or so, far sooner than 30 days
-    clock.advance(Math.ceil((30 * DAY_MS) / (BOOST_RATE - 1)));
+    expect(h.controller.getState().inventory.boost10).toBe(1); // not used up
+    expect(h.controller.getState().inventory.boost1).toBe(1);
+    // everything runs: complete far sooner than 15 days
+    clock.advance(Math.ceil((15 * DAY_MS) / (BOOST_RATE - 1)));
     await h.controller.checkGrowth();
     expect(h.controller.getState().pixelCount).toBeGreaterThanOrEqual(COMPLETE_GROWTH_INDEX + 1);
     expect(h.controller.getState().completion).toBe('complete');

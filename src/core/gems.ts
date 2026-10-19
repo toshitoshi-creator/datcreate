@@ -70,7 +70,7 @@ export function placeLuck(initialSeed: number, place: number | null): number {
 }
 
 export function rollGem(c: GemContext): GemKind | null {
-  // abilities are fixed at completion (30 days), so later dots never turn precious
+  // abilities are fixed at completion (721 dots), so later dots never turn precious
   if (c.inFace || c.growthIndex < 30 || c.growthIndex > COMPLETE_GROWTH_INDEX) return null;
   const luck = launchLuck(c.initialSeed, c.processedAt) * placeLuck(c.initialSeed, c.place);
   const rates = gemRates(c.env);

@@ -49,7 +49,7 @@ export function abilityTotal(pixels: readonly Pick<Pixel, 'seed' | 'gem'>[]): nu
 
 /**
  * Stats of a creature from its dots: colours give the leaning, talent and
- * precious dots the total. Only the dots up to completion (30 days, 721 dots)
+ * precious dots the total. Only the dots up to completion (721 dots: 15 days)
  * count, so a creature kept growing past it gets bigger but not stronger.
  */
 export function statsOf(pixels: readonly Pick<Pixel, 'color' | 'seed' | 'gem' | 'growthIndex'>[]): Stats {

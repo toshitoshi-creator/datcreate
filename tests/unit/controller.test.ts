@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { abilityTotal } from '../../src/core/stats';
-import { DAY_MS } from '../../src/core/constants';
+import { SLOT_MS } from '../../src/core/constants';
 import { GameRepository } from '../../src/data/repository';
 import { resolveStyle } from '../../src/engine/gameController';
 import { STARTER_PACK, giftFor } from '../../src/core/items';
 import { COOL_SPECIES, CUTE_SPECIES } from '../../src/core/species';
-import { FakeClock, HOUR_MS, T0, failingProvider, fakeGeolocation, makeHarness, okProvider } from '../helpers';
+import { FakeClock, T0, failingProvider, fakeGeolocation, makeHarness, okProvider } from '../helpers';
+
+// New creatures grow one dot every 30 minutes (721 dots in 15 days). These tests count in
+// growth steps: HOUR_MS = one dot, DAY_MS = 24 dots.
+const HOUR_MS = SLOT_MS;
+const DAY_MS = 24 * SLOT_MS;
 
 const fingerprint = (ps: { x: number; y: number; color: string; growthIndex: number }[]) =>
   ps.map((p) => `${p.growthIndex}:${p.x},${p.y}${p.color}`).join('|');
@@ -44,7 +49,7 @@ describe('GameController: time-based growth', () => {
     expect(h.controller.getState().pixelCount).toBe(721);
     expect(h.controller.getState().completion).toBe('complete');
     const final = h.controller.currentStats();
-    h.clock.advance(5 * DAY_MS + 30 * 60_000);
+    h.clock.advance(5 * DAY_MS + 10 * 60_000);
     await h.controller.checkGrowth();
     // left alone (no choice made): it keeps getting bigger
     expect(h.controller.getState().pixelCount).toBe(721 + 120);
@@ -234,7 +239,7 @@ describe('GameController: history & save data', () => {
     const clock = new FakeClock(T0);
     const a = await makeHarness({ clock });
     await a.controller.startNewGame();
-    clock.advance(8 * DAY_MS);
+    clock.advance(8 * 48 * SLOT_MS); // 8 real days
     await a.controller.checkGrowth();
     const ms = a.controller.getState().milestones.map((m) => m.id);
     expect(ms.length).toBeGreaterThan(0);
@@ -477,22 +482,22 @@ describe('GameController: items and gifts', () => {
     expect(h.controller.getState().inventory).toEqual(STARTER_PACK);
   });
 
-  it('using an item never adds a dot, but brings the next growth earlier (and keeps the hourly rhythm)', async () => {
+  it('using an item never adds a dot, but brings the next growth earlier (and keeps the 30-minute rhythm)', async () => {
     const clock = new FakeClock(T0);
     const h = await makeHarness({ clock });
     await h.controller.startNewGame();
-    clock.advance(10 * 60_000); // 50 min to the next growth
+    clock.advance(10 * 60_000); // 20 min to the next growth (a dot every 30 min)
     const ev = await h.controller.useItem('apple'); // -10 min
     expect(ev.ms).toBe(10 * 60_000);
     expect(h.controller.getState().pixelCount).toBe(1);
     expect(h.controller.getState().inventory.apple).toBe(STARTER_PACK.apple - 1);
-    clock.advance(39 * 60_000); // 49 min after start: not yet
+    clock.advance(9 * 60_000); // 19 min after start: not yet
     expect(await h.controller.checkGrowth()).toBe(0);
-    clock.advance(60_000); // 50 min after start = new due time
+    clock.advance(60_000); // 20 min after start = new due time
     await h.controller.checkGrowth();
     expect(h.controller.getState().pixelCount).toBe(2);
-    expect(h.controller.pixels[1].createdAt).toBe(T0 + 50 * 60_000);
-    clock.advance(60 * 60_000); // still one per hour afterwards
+    expect(h.controller.pixels[1].createdAt).toBe(T0 + 20 * 60_000);
+    clock.advance(30 * 60_000); // still one per 30 minutes afterwards
     await h.controller.checkGrowth();
     expect(h.controller.getState().pixelCount).toBe(3);
   });
@@ -501,7 +506,7 @@ describe('GameController: items and gifts', () => {
     const clock = new FakeClock(T0);
     const h = await makeHarness({ clock });
     await h.controller.startNewGame();
-    clock.advance(55 * 60_000); // 5 min left
+    clock.advance(25 * 60_000); // 5 min left
     const ev = await h.controller.useItem('cookie'); // -20 min requested
     expect(ev.ms).toBe(4 * 60_000); // capped: 1 min left
     expect(h.controller.getState().pixelCount).toBe(1);
@@ -523,7 +528,7 @@ describe('GameController: items and gifts', () => {
     const b = await makeHarness({ clock, factory: a.factory, storage: a.storage });
     expect(b.controller.getState().game?.timeBonusMs).toBe(10 * 60_000);
     expect(b.controller.getState().inventory.ball).toBe(STARTER_PACK.ball - 1);
-    clock.advance(50 * 60_000);
+    clock.advance(20 * 60_000);
     await b.controller.checkGrowth();
     expect(b.controller.getState().pixelCount).toBe(2);
   });
@@ -561,7 +566,7 @@ describe('GameController: battle reward', () => {
     expect(total()).toBe(before + 1);
     expect(await h.controller.rewardBattle(true)).toBeNull();
     expect(total()).toBe(before + 1);
-    clock.advance(DAY_MS);
+    clock.advance(48 * SLOT_MS); // the next real day
     expect(await h.controller.rewardBattle(true)).not.toBeNull();
     expect(total()).toBe(before + 2);
     expect(h.controller.getState().pixelCount).toBe(1); // battles never grow the creature
@@ -572,5 +577,37 @@ describe('GameController: battle reward', () => {
     await h.controller.startNewGame();
     const s = h.controller.currentStats()!;
     expect(s.strength + s.defense + s.speed + s.luck).toBe(abilityTotal(h.controller.pixels));
+  });
+});
+
+describe('GameController: growth pace', () => {
+  it('a new creature grows a dot every 30 minutes and is complete (721 dots) in 15 days', async () => {
+    const clock = new FakeClock(T0);
+    const h = await makeHarness({ clock });
+    await h.controller.startNewGame();
+    expect(h.controller.getState().game!.slotMs).toBe(30 * 60_000);
+    clock.advance(30 * 60_000);
+    await h.controller.checkGrowth();
+    expect(h.controller.getState().pixelCount).toBe(2);
+    clock.advance(15 * 48 * SLOT_MS - 30 * 60_000); // 15 real days after the start
+    await h.controller.checkGrowth();
+    expect(h.controller.getState().pixelCount).toBe(721);
+    expect(h.controller.getState().completion).toBe('complete');
+  });
+
+  it('a creature started before the change keeps growing hourly (no sudden jump)', async () => {
+    const clock = new FakeClock(T0);
+    const h = await makeHarness({ clock });
+    await h.controller.startNewGame();
+    // turn it into an hourly creature, as saved by an earlier version (no slotMs)
+    const text = JSON.parse(await h.controller.exportSaveText());
+    delete text.game.slotMs;
+    // loading a backup of the creature being raised (same id) replaces it cleanly
+    await h.controller.importSaveText(JSON.stringify(text));
+    expect(await h.repo.countPixels(h.controller.getState().game!.gameId)).toBe(1);
+    expect(h.controller.getState().game!.slotMs).toBeUndefined();
+    clock.advance(10 * 3_600_000);
+    await h.controller.checkGrowth();
+    expect(h.controller.getState().pixelCount).toBe(11);
   });
 });

@@ -14,8 +14,13 @@ export const WEATHER_VALID_MS = 3 * HOUR_MS;
 /** Clock moving backwards by more than this is reported as an anomaly. */
 export const CLOCK_ROLLBACK_TOLERANCE_MS = 5 * 60_000;
 
-/** Growth slot at which a creature is complete (30 days -> 721 dots). */
+/** Growth slot at which a creature is complete (721 dots: 15 days at one dot per 30 minutes). */
 export const COMPLETE_GROWTH_INDEX = 720;
+
+/** Time between dots for new creatures. */
+export const SLOT_MS = 30 * 60_000;
+/** Creatures started before the 30-minute pace keep growing hourly. */
+export const LEGACY_SLOT_MS = HOUR_MS;
 
 /** Max length of a creature's name (characters). */
 export const NAME_MAX_LENGTH = 20;

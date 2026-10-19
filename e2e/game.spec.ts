@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 
 const START = new Date('2026-10-17T09:37:00+09:00');
 const HOUR = 3_600_000;
+/** A new creature grows one dot every 30 minutes (721 dots in 15 days). */
+const STEP = 30 * 60_000;
 
 async function startGame(page: Page) {
   await page.clock.install({ time: START });
@@ -34,34 +36,34 @@ async function canvasSnapshot(page: Page) {
   return page.getByTestId('creature-canvas').evaluate((c: HTMLCanvasElement) => c.toDataURL());
 }
 
-test('a new game starts with one dot and grows one dot per real hour', async ({ page }) => {
+test('a new game starts with one dot and grows one dot every 30 minutes', async ({ page }) => {
   await startGame(page);
-  await page.clock.fastForward(HOUR - 5_000);
+  await page.clock.fastForward(STEP - 5_000);
   await page.waitForTimeout(1500);
   await expect(count(page)).toHaveText('1');
   await page.clock.fastForward(10_000);
   await expect(count(page)).toHaveText('2');
-  await jump(page, 23 * HOUR);
+  await jump(page, 23 * STEP);
   await expect(count(page)).toHaveText('25');
 });
 
-test('30 days -> 721 dots, keeps growing afterwards, offline growth applied on relaunch', async ({ page }) => {
+test('15 days -> 721 dots, keeps growing afterwards, offline growth applied on relaunch', async ({ page }) => {
   await startGame(page);
-  await jump(page, 30 * 24 * HOUR);
+  await jump(page, 15 * 24 * HOUR);
   await expect(count(page)).toHaveText('721');
   await expect(page.getByTestId('completion-dialog')).toBeVisible();
   await page.waitForTimeout(3000);
   await page.screenshot({ path: 'test-results/shots/day30.png' });
   // "close" the app (reload) and come back later without choosing: it kept growing,
   // and the choice is still offered
-  await jump(page, 48 * HOUR);
+  await jump(page, 48 * STEP);
   await page.reload();
   await expect(count(page)).toHaveText('769');
   await expect(page.getByTestId('completion-dialog')).toBeVisible();
-  await expect(page.getByTestId('keeps-growing-note')).toContainText('のうりょくは30日目のまま');
+  await expect(page.getByTestId('keeps-growing-note')).toContainText('のうりょくは15日目のまま');
   await page.getByTestId('keep-growing').click();
   await expect(page.getByTestId('completion-dialog')).toHaveCount(0);
-  await jump(page, 2 * HOUR);
+  await jump(page, 2 * STEP);
   await expect(count(page)).toHaveText('771');
   // after 30 days, "raise a new one" stays on the dot screen
   await expect(page.getByTestId('new-creature-button')).toBeVisible();
@@ -85,7 +87,7 @@ test('30 days -> 721 dots, keeps growing afterwards, offline growth applied on r
 test('reload keeps positions and colours identical, and history persists', async ({ page }) => {
   await startGame(page);
   await disableAnimation(page);
-  await jump(page, 10 * 24 * HOUR);
+  await jump(page, 10 * 24 * STEP);
   await expect(count(page)).toHaveText('241');
   const before = await canvasSnapshot(page);
   await page.getByTestId('open-history').click();
@@ -104,7 +106,7 @@ test('reload keeps positions and colours identical, and history persists', async
 
 test('clock moved backwards does not duplicate or remove dots', async ({ page }) => {
   await startGame(page);
-  await jump(page, 5 * HOUR);
+  await jump(page, 5 * STEP);
   await expect(count(page)).toHaveText('6');
   await page.clock.setSystemTime(START.getTime() - 2 * HOUR);
   await page.reload();
@@ -121,7 +123,7 @@ test('weather API failure and denied location do not break growth', async ({ pag
   await expect(page.getByTestId('settings-message')).toBeVisible();
   await expect(page.getByTestId('toggle-location')).toHaveAttribute('aria-checked', 'false');
   await page.getByTestId('close-settings').click();
-  await jump(page, 3 * HOUR);
+  await jump(page, 3 * STEP);
   await expect(count(page)).toHaveText('4');
 });
 
@@ -134,7 +136,7 @@ test('weather failure with location granted still grows', async ({ page, context
   await page.getByTestId('toggle-location').click();
   await expect(page.getByTestId('weather-status')).toContainText('取得失敗');
   await page.getByTestId('close-settings').click();
-  await jump(page, 2 * HOUR);
+  await jump(page, 2 * STEP);
   await expect(count(page)).toHaveText('3');
 });
 
@@ -154,7 +156,7 @@ test('weather success is shown and stored without showing coordinates', async ({
 test('export, reset with confirmation, and import restore the same individual', async ({ page }) => {
   await startGame(page);
   await disableAnimation(page);
-  await jump(page, 3 * 24 * HOUR);
+  await jump(page, 3 * 24 * STEP);
   await expect(count(page)).toHaveText('73');
   const before = await canvasSnapshot(page);
 
@@ -190,7 +192,7 @@ test('10,000 dots: main screen renders, zooms and pans', async ({ page }, info) 
   test.setTimeout(240_000);
   await startGame(page);
   const t0 = Date.now();
-  await jump(page, 10_000 * HOUR);
+  await jump(page, 10_000 * STEP);
   await page.getByTestId('keep-growing').click({ timeout: 60_000 });
   await expect(count(page)).toHaveText('10,001', { timeout: 180_000 });
   const catchUpMs = Date.now() - t0;
@@ -242,9 +244,9 @@ test('start offers only cute / cool / random; the choice is kept after reload', 
   await expect(page.getByTestId('settings-screen')).not.toContainText(HIDDEN_WORDS);
 });
 
-test('after 30 days a finished creature goes to the collection and a new one starts', async ({ page }) => {
+test('after 15 days a finished creature goes to the collection and a new one starts', async ({ page }) => {
   await startGame(page);
-  await jump(page, 30 * 24 * HOUR);
+  await jump(page, 15 * 24 * HOUR);
   await expect(page.getByTestId('completion-dialog')).toBeVisible();
   await expect(page.getByTestId('gift')).toContainText('お礼のプレゼント');
   await page.getByTestId('start-new-creature').click();
@@ -316,7 +318,7 @@ test('after 30 days a finished creature goes to the collection and a new one sta
   await expect(count(page)).toHaveText('1');
 
   // a second creature may share the same name
-  await jump(page, 30 * 24 * HOUR);
+  await jump(page, 15 * 24 * HOUR);
   await page.getByTestId('start-new-creature').click();
   await page.getByTestId('name-input').fill('もちまる');
   await page.getByTestId('name-submit').click();
@@ -344,7 +346,7 @@ test('after 30 days a finished creature goes to the collection and a new one sta
 
 test('feeding and playing: no dot is added, the next growth comes sooner, stock goes down', async ({ page }) => {
   await startGame(page);
-  await expect(page.getByTestId('countdown')).toHaveText(/^(1:00:00|59:5\d)$/);
+  await expect(page.getByTestId('countdown')).toHaveText(/^(30:00|29:5\d)$/);
   await page.getByTestId('open-food').click();
   await expect(page.getByTestId('count-apple')).toHaveText('×3');
   await page.screenshot({ path: 'test-results/shots/items.png' });
@@ -353,22 +355,22 @@ test('feeding and playing: no dot is added, the next growth comes sooner, stock 
   await page.waitForTimeout(400);
   await page.screenshot({ path: 'test-results/shots/reaction.png' });
   await expect(count(page)).toHaveText('1');
-  await expect(page.getByTestId('countdown')).toHaveText(/^(50:00|49:5\d)$/);
+  await expect(page.getByTestId('countdown')).toHaveText(/^(20:00|19:5\d)$/);
   await page.getByTestId('open-toy').click();
   await page.getByTestId('item-ball').click();
-  await expect(page.getByTestId('countdown')).toHaveText(/^(40:00|39:5\d)$/);
+  await expect(page.getByTestId('countdown')).toHaveText(/^(10:00|09:5\d)$/);
   await page.reload();
-  await expect(page.getByTestId('countdown')).toHaveText(/^(40:00|39:5\d)$/);
+  await expect(page.getByTestId('countdown')).toHaveText(/^(10:00|09:5\d)$/);
   await page.getByTestId('open-food').click();
   await expect(page.getByTestId('count-apple')).toHaveText('×2');
   await page.getByTestId('close-items').click();
-  await jump(page, 40 * 60_000);
+  await jump(page, 10 * 60_000);
   await expect(count(page)).toHaveText('2');
 });
 
 test('a small battle against a wild dot, with stats from colours and no names revealed', async ({ page }) => {
   await startGame(page);
-  await jump(page, 10 * 24 * HOUR);
+  await jump(page, 10 * 24 * STEP);
   await expect(count(page)).toHaveText('241');
   await page.getByTestId('open-battle').click();
   await page.getByTestId('hub-wild').click();
@@ -495,15 +497,15 @@ test('shop: coins are exchanged for a pace-up item, which speeds growth without 
   await expect(page.getByTestId('item-toast')).toContainText('1日ぶん');
   await expect(page.getByTestId('boost-status')).toContainText('ペースアップ中');
   await expect(count(page)).toHaveText('1'); // no dot on the spot
-  await expect(page.getByTestId('countdown')).toHaveText(/^(10:00|9:5\d|09:5\d)$/);
+  await expect(page.getByTestId('countdown')).toHaveText(/^(05:00|04:5\d)$/);
   await page.screenshot({ path: 'test-results/shots/boost.png' });
   await jump(page, 4 * HOUR);
-  await expect(count(page)).toHaveText('25'); // 4 h at 6x = 24 dots, + the first
+  await expect(count(page)).toHaveText('49'); // 4 h at 6x = 24 h = 48 dots, + the first
   await jump(page, 2 * HOUR);
-  // done after 4.8 h, then hourly again, a day ahead: 6 h + 24 h saved = 30 dots, + the first
-  await expect(count(page)).toHaveText('31');
+  // done after 4.8 h, then every 30 min again, a day ahead: 6 h + 24 h saved = 60 dots, + the first
+  await expect(count(page)).toHaveText('61');
   await expect(page.getByTestId('boost-status')).toHaveCount(0);
   await page.reload();
-  await expect(count(page)).toHaveText('31');
+  await expect(count(page)).toHaveText('61');
   await expect(page.getByTestId('hud-coins')).toHaveText('450');
 });

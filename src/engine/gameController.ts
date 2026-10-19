@@ -1,10 +1,10 @@
-import { CLOCK_ROLLBACK_TOLERANCE_MS, COMPLETE_GROWTH_INDEX, HOUR_MS, CURRENT_GENERATOR_VERSION, NAME_MAX_LENGTH, SCHEMA_VERSION, WEATHER_VALID_MS } from '../core/constants';
+import { CLOCK_ROLLBACK_TOLERANCE_MS, COMPLETE_GROWTH_INDEX, HOUR_MS, SLOT_MS, CURRENT_GENERATOR_VERSION, NAME_MAX_LENGTH, SCHEMA_VERSION, WEATHER_VALID_MS } from '../core/constants';
 import { Simulation } from '../core/generator';
 import { detectMilestones, sortMilestones } from '../core/milestones';
 import { freshSeed, hash32 } from '../core/rng';
 import { resolveStyle, type StyleChoice } from '../core/looks';
 import { timeOfDayFromHour } from '../core/time';
-import { BOOST_RATE, activeBoost, dueIndexAt, effectiveTime, pendingBoostMs, slotDueAt } from '../core/schedule';
+import { BOOST_RATE, activeBoost, dotsPerDay, dueIndexAt, effectiveTime, pendingBoostMs, slotDueAt, slotMsOf } from '../core/schedule';
 import { AD_DAILY_LIMIT, AD_REWARD_COINS, BOOST_BY_ID, COIN_PACK_BY_ID, boostMs, dayKey, type BoostDef } from '../core/shop';
 import { ITEMS, ITEM_BY_ID, MIN_WAIT_AFTER_ITEM_MS, giftFor, type ItemDef, type Inventory } from '../core/items';
 import { statsOf, type Stats } from '../core/stats';
@@ -35,7 +35,7 @@ export interface ControllerState {
   clockWarning: boolean;
   locationStatus: FetchStatus | null;
   /**
-   * 'complete': reached 30 days and waits for the player's choice (growth is
+   * 'complete': reached completion (721 dots) and waits for the player's choice (growth is
    * paused); 'continuing': the player chose to keep growing.
    */
   completion: Completion;
@@ -246,6 +246,7 @@ export class GameController {
       createdAt: now,
       updatedAt: now,
       lastObservedAt: now,
+      slotMs: SLOT_MS,
       style,
       ...(species ? { species } : {}),
     };
@@ -307,7 +308,7 @@ export class GameController {
       this.setState({ clockWarning: false });
     }
 
-    // growth never pauses: past 30 days the body keeps getting bigger (abilities stay as at 30 days)
+    // growth never pauses: past completion the body keeps getting bigger (abilities stay as they were)
     const due = dueIndexAt(game, now);
     const last = game.lastProcessedGrowthIndex;
     if (due <= last) return 0;
@@ -334,7 +335,7 @@ export class GameController {
           const gem = rollGem({ initialSeed: game.initialSeed, growthIndex: i, env: slot.env, processedAt: now, place, inFace });
           r.pixel.gem = gem;
           pixels.push(r.pixel);
-          milestones.push(...detectMilestones(r.pixel, r.freshAnalysis ? r.analysis : null, this.achieved));
+          milestones.push(...detectMilestones(r.pixel, r.freshAnalysis ? r.analysis : null, this.achieved, dotsPerDay(game)));
         }
         game = await this.deps.repo.appendGrowth(game.gameId, from - 1, pixels, milestones, now);
         this.pixels.push(...pixels);
@@ -378,7 +379,7 @@ export class GameController {
     if (!((this.state.inventory[itemId] ?? 0) > 0)) throw new Error('そのアイテムを持っていません');
     const now = this.deps.clock.now();
     // effective time still to go before the next dot; while a pace-up runs it passes faster
-    const remaining = g.startedAt + (g.lastProcessedGrowthIndex + 1) * HOUR_MS - effectiveTime(g, now);
+    const remaining = g.startedAt + (g.lastProcessedGrowthIndex + 1) * slotMsOf(g) - effectiveTime(g, now);
     const margin = MIN_WAIT_AFTER_ITEM_MS * (activeBoost(g, now) ? BOOST_RATE : 1);
     const ms = Math.min(item.minutes * 60_000, remaining - margin);
     if (ms <= 0) throw new Error('もうすぐ大きくなるよ。少し待ってから使ってね');
@@ -479,7 +480,7 @@ export class GameController {
     let ms = boostMs(b);
     if (!g.keepGrowing) {
       // what is still left to the 721st dot after everything already queued
-      const left = g.startedAt + COMPLETE_GROWTH_INDEX * HOUR_MS - effectiveTime(g, now) - pendingBoostMs(g, now);
+      const left = g.startedAt + COMPLETE_GROWTH_INDEX * slotMsOf(g) - effectiveTime(g, now) - pendingBoostMs(g, now);
       ms = Math.min(ms, Math.floor(left));
       if (ms < HOUR_MS) throw new Error('もうすぐ完成するので、これ以上は短くできません');
     }

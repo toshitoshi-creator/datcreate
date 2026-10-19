@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { COMPLETE_GROWTH_INDEX, DAY_MS } from '../../src/core/constants';
+import { COMPLETE_GROWTH_INDEX, SLOT_MS } from '../../src/core/constants';
 import { completionNoticeAt } from '../../src/core/notice';
 import { CompletionNotifier, type NotificationPort } from '../../src/engine/completionNotifier';
-import { FakeClock, HOUR_MS, T0, makeHarness } from '../helpers';
+import { FakeClock, T0, makeHarness } from '../helpers';
+
+// New creatures grow one dot every 30 minutes (721 dots in 15 days). These tests count in
+// growth steps: HOUR_MS = one dot, DAY_MS = 24 dots.
+const HOUR_MS = SLOT_MS;
+const DAY_MS = 24 * SLOT_MS;
 
 class FakePort implements NotificationPort {
   pending: number | null = null;
@@ -28,7 +33,7 @@ async function setup() {
 
 describe('completion notice', () => {
   it('is due at the 721st dot, and none once finished, kept growing or archived', () => {
-    const g = { gameId: 'g', startedAt: T0, lastProcessedGrowthIndex: 0, schemaVersion: 1, generatorVersion: 3, initialSeed: 1, createdAt: T0, updatedAt: T0, lastObservedAt: T0 };
+    const g = { gameId: 'g', startedAt: T0, slotMs: SLOT_MS, lastProcessedGrowthIndex: 0, schemaVersion: 1, generatorVersion: 3, initialSeed: 1, createdAt: T0, updatedAt: T0, lastObservedAt: T0 };
     expect(completionNoticeAt(g)).toBe(T0 + COMPLETE_GROWTH_INDEX * HOUR_MS);
     expect(completionNoticeAt({ ...g, timeBonusMs: 3 * HOUR_MS })).toBe(T0 + (COMPLETE_GROWTH_INDEX - 3) * HOUR_MS);
     expect(completionNoticeAt({ ...g, lastProcessedGrowthIndex: COMPLETE_GROWTH_INDEX })).toBeNull();

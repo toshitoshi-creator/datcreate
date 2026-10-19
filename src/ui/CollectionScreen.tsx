@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { COMPLETE_GROWTH_INDEX, DAY_MS } from '../core/constants';
+import { slotMsOf } from '../core/schedule';
 import type { GameState, Pixel } from '../core/types';
 import type { GameController } from '../engine/gameController';
 import { drawThumbnail } from '../render/renderer';
@@ -75,7 +76,7 @@ export function CollectionScreen({ controller, onClose, forBattle, mode, onChamp
         ) : items === null ? null : items.length === 0 ? (
           <div className="empty-collection">
             <p>まだ図鑑に入った子はいません。</p>
-            <p className="muted small">30日育てて完成した子を「図鑑にしまう」と、ここに残ります。</p>
+            <p className="muted small">15日育てて完成した子を「図鑑にしまう」と、ここに残ります。</p>
           </div>
         ) : (
           <>
@@ -153,7 +154,7 @@ function CollectionDetail({ game, number, controller, onDeleted, onRenamed, onBa
   const [confirm, setConfirm] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const days = Math.floor((game.lastProcessedGrowthIndex * 3_600_000) / DAY_MS);
+  const days = Math.floor((game.lastProcessedGrowthIndex * slotMsOf(game)) / DAY_MS);
   return (
     <div className="collection-detail" data-testid="collection-detail">
       {renaming ? (

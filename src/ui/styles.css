@@ -1297,3 +1297,9 @@ button {
 .new-creature-btn {
   margin-bottom: 10px;
 }
+.has-new-btn .zoom-controls {
+  bottom: calc(env(safe-area-inset-bottom) + 214px);
+}
+.has-new-btn .toast {
+  bottom: calc(env(safe-area-inset-bottom) + 265px);
+}

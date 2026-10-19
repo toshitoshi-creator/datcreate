@@ -226,7 +226,7 @@ export class GameRepository {
       try { tx.abort(); } catch { /* already finished */ }
       throw new Error('図鑑の個体ではありません');
     }
-    this.deleteGameInTx(tx, gameId);
+    await this.deleteGameInTx(tx, gameId);
     const champ = await reqToPromise(tx.objectStore(STORES.meta).get(CHAMPION_KEY));
     if (champ?.value === gameId) tx.objectStore(STORES.meta).delete(CHAMPION_KEY);
     await txDone(tx);
@@ -531,7 +531,7 @@ export class GameRepository {
     const meta = await reqToPromise(tx.objectStore(STORES.meta).get(ACTIVE_KEY));
     const ids = new Set<string>([save.game.gameId]);
     if (meta?.value) ids.add(meta.value as string);
-    for (const id of ids) this.deleteGameInTx(tx, id);
+    for (const id of ids) await this.deleteGameInTx(tx, id);
     tx.objectStore(STORES.games).put(save.game);
     const ps = tx.objectStore(STORES.pixels);
     for (const p of save.pixels) ps.put(p);
@@ -544,35 +544,39 @@ export class GameRepository {
     return save.game;
   }
 
-  private deleteGameInTx(tx: IDBTransaction, gameId: string) {
+  /**
+   * Delete a game and everything that belongs to it, inside `tx`. Resolves
+   * once every delete is issued, so callers can write a game with the same
+   * id afterwards without the cursors removing the new records.
+   */
+  private deleteGameInTx(tx: IDBTransaction, gameId: string): Promise<void> {
     tx.objectStore(STORES.games).delete(gameId);
-    const range = IDBKeyRange.bound([gameId, 0], [gameId, Number.MAX_SAFE_INTEGER]);
-    // Pixel ids are `${gameId}:${index}`; delete via the index cursor.
-    const req = tx.objectStore(STORES.pixels).index('byGameIndex').openKeyCursor(range);
+    const sweep = (source: IDBIndex, range: IDBKeyRange, store: IDBObjectStore) =>
+      new Promise<void>((resolve, reject) => {
+        const req = source.openKeyCursor(range);
+        req.onsuccess = () => {
+          const cur = req.result;
+          if (!cur) return resolve();
+          store.delete(cur.primaryKey);
+          cur.continue();
+        };
+        req.onerror = () => reject(req.error);
+      });
     const pixels = tx.objectStore(STORES.pixels);
-    req.onsuccess = () => {
-      const cur = req.result;
-      if (!cur) return;
-      pixels.delete(cur.primaryKey);
-      cur.continue();
-    };
-    for (const store of [STORES.environment, STORES.milestones]) {
-      const s = tx.objectStore(store);
-      const r = s.index('byGame').openKeyCursor(IDBKeyRange.only(gameId));
-      r.onsuccess = () => {
-        const cur = r.result;
-        if (!cur) return;
-        s.delete(cur.primaryKey);
-        cur.continue();
-      };
+    // Pixel ids are `${gameId}:${index}`; delete via the index cursor.
+    const jobs = [sweep(pixels.index('byGameIndex'), IDBKeyRange.bound([gameId, 0], [gameId, Number.MAX_SAFE_INTEGER]), pixels)];
+    for (const name of [STORES.environment, STORES.milestones]) {
+      const s = tx.objectStore(name);
+      jobs.push(sweep(s.index('byGame'), IDBKeyRange.only(gameId), s));
     }
+    return Promise.all(jobs).then(() => undefined);
   }
 
   /** Delete the active game entirely (after the UI confirmed it). */
   async resetActiveGame(): Promise<void> {
     const tx = this.tx([STORES.games, STORES.pixels, STORES.environment, STORES.milestones, STORES.meta], 'readwrite');
     const meta = await reqToPromise(tx.objectStore(STORES.meta).get(ACTIVE_KEY));
-    if (meta?.value) this.deleteGameInTx(tx, meta.value as string);
+    if (meta?.value) await this.deleteGameInTx(tx, meta.value as string);
     // environment logs captured before a game existed
     const env = tx.objectStore(STORES.environment);
     const r = env.index('byGame').openKeyCursor(IDBKeyRange.only('none'));

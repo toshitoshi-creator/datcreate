@@ -1,4 +1,4 @@
-import { HOUR_MS } from './constants';
+import { COMPLETE_GROWTH_INDEX, DAY_MS, LEGACY_SLOT_MS } from './constants';
 import type { GameState } from './types';
 
 /**
@@ -6,14 +6,29 @@ import type { GameState } from './types';
  *
  * "Effective time" runs ahead of the clock: by `timeBonusMs` (ごはん / あそぶ),
  * and faster while a pace-up (時短アイテム) is running. Slot i is due when
- * the effective time reaches startedAt + i hours. Pace-ups run one after
+ * the effective time reaches startedAt + i slots (30 minutes; 1 hour for older creatures). Pace-ups run one after
  * another; each one makes time run BOOST_RATE times faster until it has saved
  * its whole amount, so using one never adds a dot on the spot.
  * A game with no pace-ups is exactly the old schedule (startedAt - bonus + i h).
  */
 export const BOOST_RATE = 6;
 
-export type ScheduleGame = Pick<GameState, 'startedAt' | 'timeBonusMs' | 'boosts'>;
+export type ScheduleGame = Pick<GameState, 'startedAt' | 'timeBonusMs' | 'boosts' | 'slotMs'>;
+
+/** Time between this creature's dots. */
+export function slotMsOf(game: Pick<GameState, 'slotMs'>): number {
+  return game.slotMs ?? LEGACY_SLOT_MS;
+}
+
+/** Dots a day at this creature's pace. */
+export function dotsPerDay(game: Pick<GameState, 'slotMs'>): number {
+  return DAY_MS / slotMsOf(game);
+}
+
+/** Days from start to completion (721 dots) at this creature's pace: 15 (or 30 for hourly ones). */
+export function completeDays(game: Pick<GameState, 'slotMs'>): number {
+  return Math.round((COMPLETE_GROWTH_INDEX * slotMsOf(game)) / DAY_MS);
+}
 
 interface Segment {
   start: number;
@@ -49,12 +64,12 @@ export function dueIndexAt(game: ScheduleGame, now: number): number {
   if (!Number.isFinite(now)) return 0;
   const e = effectiveTime(game, now);
   if (e < game.startedAt) return 0;
-  return Math.floor((e - game.startedAt) / HOUR_MS);
+  return Math.floor((e - game.startedAt) / slotMsOf(game));
 }
 
 /** Clock time at which slot `index` is due (inverse of effectiveTime). */
 export function slotDueAt(game: ScheduleGame, index: number): number {
-  const target = game.startedAt + index * HOUR_MS - (game.timeBonusMs ?? 0);
+  const target = game.startedAt + index * slotMsOf(game) - (game.timeBonusMs ?? 0);
   let offset = 0; // accrued before the current segment
   for (const s of segments(game)) {
     if (target - offset <= s.start) return target - offset;

@@ -23,7 +23,7 @@ export interface GameState {
   style?: CreatureStyle;
   /** Animal look within the style family (v3+). Missing = the plain style look. */
   species?: Species;
-  /** The player chose to keep growing past completion (30 days). */
+  /** The player chose to keep growing past completion (721 dots). */
   keepGrowing?: boolean;
   /** Set when the creature was moved to the collection; it no longer grows. */
   archivedAt?: number;
@@ -39,6 +39,8 @@ export interface GameState {
    * makes growth BOOST_RATE times faster until it has saved `ms`. Only appended.
    */
   boosts?: { boostId: string; at: number; ms: number }[];
+  /** Time between dots. Missing = 1 hour (creatures started before the 30-minute pace). */
+  slotMs?: number;
   /** Recent item uses (newest last, capped). */
   itemUses?: { itemId: string; at: number; ms: number }[];
   /** Thank-you present received at completion (once). */

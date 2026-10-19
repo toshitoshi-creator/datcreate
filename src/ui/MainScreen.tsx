@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GEMS, GEM_ORDER } from '../core/gems';
 import { TIME_OF_DAY_LABEL, WEATHER_LABEL } from '../core/environment';
 import { elapsedParts, formatCountdown, timeOfDayFromHour } from '../core/time';
-import { activeBoost, nextSlotDueAt } from '../core/schedule';
+import { activeBoost, completeDays, dotsPerDay, nextSlotDueAt } from '../core/schedule';
 import type { ControllerState } from '../engine/gameController';
 import { CreatureView, type CreatureViewHandle } from './CreatureView';
 import { CompletionDialog } from './CompletionDialog';
@@ -79,7 +79,7 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
   const weather = state.weatherLog?.weather ?? 'unknown';
 
   return (
-    <div className="main-screen" aria-hidden={hidden}>
+    <div className={`main-screen${state.completion !== 'growing' ? ' has-new-btn' : ''}`} aria-hidden={hidden}>
       <CreatureView ref={view} controller={controller} settingsStore={settingsStore} settings={settings} bottomInset={state.completion === 'complete' ? 300 : state.completion === 'continuing' ? 60 : 0} />
 
       <header className="hud-top">
@@ -190,6 +190,7 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
       {sheet === 'new' && (
         <NewCreatureSheet
           count={state.pixelCount}
+          days={completeDays(game)}
           suggestName={() => controller.suggestName()}
           onSave={(name) => controller.retireToCollection(name)}
           onClose={() => setSheet(null)}
@@ -199,6 +200,7 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
       {sheet === 'boost' && (
         <BoostSheet
           inventory={state.inventory}
+          perDay={dotsPerDay(game)}
           onClose={() => setSheet(null)}
           onOpenShop={() => {
             setSheet(null);
@@ -237,6 +239,7 @@ export function MainScreen({ services, state, onOpen, hidden }: Props) {
       {state.completion === 'complete' && !hidden && (
         <CompletionDialog
           count={state.pixelCount}
+          days={completeDays(game)}
           gift={state.game?.gift ?? null}
           suggestName={() => controller.suggestName()}
           onSave={(name) => controller.retireToCollection(name)}

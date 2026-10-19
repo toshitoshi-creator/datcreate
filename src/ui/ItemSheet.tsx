@@ -25,7 +25,7 @@ export function ItemSheet({ kind, inventory, onUse, onClose }: Props) {
           </button>
         </div>
         <p className="muted small">使うと次にドットが増えるタイミングがはやくなります（その場でドットは増えません）。</p>
-        {owned.length === 0 && <p className="item-empty">持っているアイテムがありません。30日育てて完成すると、お礼にもらえます。</p>}
+        {owned.length === 0 && <p className="item-empty">持っているアイテムがありません。15日育てて完成すると、お礼にもらえます。</p>}
         <ul className="item-grid">
           {items.map((it) => {
             const n = inventory[it.id] ?? 0;

@@ -49,7 +49,7 @@ export interface GiftEntry {
 }
 
 /**
- * The thank-you present a creature gives when it completes (30 days).
+ * The thank-you present a creature gives when it completes (721 dots).
  * Deterministic from the creature's seed: one food, one toy and one rare item.
  */
 export function giftFor(initialSeed: number): GiftEntry[] {
